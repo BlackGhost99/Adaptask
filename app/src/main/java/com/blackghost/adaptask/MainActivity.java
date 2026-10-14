@@ -10,6 +10,7 @@ import java.text.*;
 import java.util.*;
 public class MainActivity extends Activity {
  TaskStore store; EditText title,category; Spinner priority; Button dateButton; long due;
+ int statusFilter=0,priorityFilter=0;
  final String[] levels={"Faible","Normale","Urgente","Critique"};
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density);}
  @Override public void onCreate(Bundle b){super.onCreate(b);store=new TaskStore(this);due=System.currentTimeMillis()+3600000L;
@@ -88,8 +89,36 @@ public class MainActivity extends Activity {
   Button add=new Button(this);add.setText("Ajouter la tâche");root.addView(add);
   add.setOnClickListener(v->{String t=title.getText().toString().trim();if(t.isEmpty()){title.setError("Indique un titre");return;}if(due<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}long id=store.add(t,category.getText().toString().trim(),priority.getSelectedItemPosition(),due);ReminderReceiver.schedule(this,id,due);render();});
   root.addView(label("Mes tâches",22));
+  LinearLayout filters=new LinearLayout(this);filters.setOrientation(1);
+  filters.addView(label("Filtrer par statut",15));
+  Spinner status=new Spinner(this);
+  status.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Toutes les tâches","En attente","En retard","Terminées"}));
+  status.setSelection(statusFilter);filters.addView(status);
+  filters.addView(label("Filtrer par priorité",15));
+  Spinner level=new Spinner(this);
+  level.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Toutes les priorités","Faible","Normale","Urgente","Critique"}));
+  level.setSelection(priorityFilter);filters.addView(level);root.addView(filters);
+  status.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+   public void onNothingSelected(android.widget.AdapterView<?> parent){}
+   public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){
+    if(statusFilter!=position){statusFilter=position;render();}
+   }
+  });
+  level.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+   public void onNothingSelected(android.widget.AdapterView<?> parent){}
+   public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){
+    if(priorityFilter!=position){priorityFilter=position;render();}
+   }
+  });
+  int visibleCount=0;
+  long filterNow=System.currentTimeMillis();
   try(Cursor c=store.all()){while(c.moveToNext()){
    final long id=c.getLong(0);String name=c.getString(1),cat=c.getString(2);int p=c.getInt(3);long time=c.getLong(4);boolean done=c.getInt(5)==1;
+   if(statusFilter==1&&done)continue;
+   if(statusFilter==2&&(done||time>=filterNow))continue;
+   if(statusFilter==3&&!done)continue;
+   if(priorityFilter>0&&p!=priorityFilter-1)continue;
+   visibleCount++;
    LinearLayout item=new LinearLayout(this);item.setOrientation(1);item.setPadding(dp(10),dp(10),dp(10),dp(10));
    TextView text=label((done?"✓ ":"● ")+name+"\n"+cat+" · "+date(time)+" · "+levels[p],16);item.addView(text);
    if(!done){
@@ -102,5 +131,6 @@ public class MainActivity extends Activity {
    delete.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Supprimer cette tâche ?").setMessage(name).setNegativeButton("Annuler",null).setPositiveButton("Supprimer",(dialog,which)->{ReminderReceiver.cancel(this,id);store.delete(id);render();}).show());
    item.addView(delete);root.addView(item);
   }}
+  if(visibleCount==0)root.addView(label("Aucune tâche ne correspond aux filtres.",15));
  }
 }
