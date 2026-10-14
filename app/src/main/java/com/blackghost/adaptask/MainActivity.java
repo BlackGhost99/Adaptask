@@ -17,7 +17,8 @@ public class MainActivity extends Activity {
  String searchQuery="";
  LinearLayout taskList;
  final String[] levels={"Faible","Normale","Urgente","Critique"};
- final String[] repeats={"Une seule fois","Chaque jour","Chaque semaine"};
+ final String[] repeats={"Une seule fois","Chaque jour","Chaque semaine","Chaque mois","Tous les X jours","Jours de la semaine"};
+ int repeatInterval=2,repeatDays=0;
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density);}
  @Override public void onCreate(Bundle b){super.onCreate(b);store=new TaskStore(this);due=System.currentTimeMillis()+3600000L;
   if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},1);
@@ -40,13 +41,14 @@ public class MainActivity extends Activity {
    editor.apply();render();Toast.makeText(this,"Intervalles enregistrés",Toast.LENGTH_SHORT).show();
   }).show();
  }
- void editTask(long id,String oldTitle,String oldCategory,int oldPriority,long oldDue,int oldRepeat){
+ void editTask(long id,String oldTitle,String oldCategory,int oldPriority,long oldDue,int oldRepeat,int oldInterval,int oldDays){
   final long[] chosenDue={oldDue};
   LinearLayout form=new LinearLayout(this);form.setOrientation(1);form.setPadding(dp(20),dp(8),dp(20),dp(8));
   EditText editTitle=new EditText(this);editTitle.setHint("Titre");editTitle.setText(oldTitle);form.addView(editTitle);
   EditText editCategory=new EditText(this);editCategory.setHint("Catégorie");editCategory.setText(oldCategory);form.addView(editCategory);
   Spinner editPriority=new Spinner(this);editPriority.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,levels));editPriority.setSelection(oldPriority);form.addView(editPriority);
   Spinner editRepeat=new Spinner(this);editRepeat.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,repeats));editRepeat.setSelection(oldRepeat);form.addView(editRepeat);
+  final int[] ruleInterval={oldInterval},ruleDays={oldDays};Button editRule=new Button(this);editRule.setText("Configurer la répétition");form.addView(editRule);editRule.setOnClickListener(v->configureRepeat(editRepeat.getSelectedItemPosition(),ruleInterval,ruleDays));
   Button editDate=new Button(this);editDate.setText("Échéance : "+date(chosenDue[0]));form.addView(editDate);
   editDate.setOnClickListener(v->{Calendar cal=Calendar.getInstance();cal.setTimeInMillis(chosenDue[0]);new DatePickerDialog(this,(view,y,m,d)->{
    new TimePickerDialog(this,(tv,h,min)->{Calendar x=Calendar.getInstance();x.set(y,m,d,h,min,0);chosenDue[0]=x.getTimeInMillis();editDate.setText("Échéance : "+date(chosenDue[0]));},cal.get(Calendar.HOUR_OF_DAY),cal.get(Calendar.MINUTE),true).show();
@@ -56,7 +58,7 @@ public class MainActivity extends Activity {
    String newTitle=editTitle.getText().toString().trim();
    if(newTitle.isEmpty()){editTitle.setError("Titre obligatoire");return;}
    if(chosenDue[0]<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}
-   store.update(id,newTitle,editCategory.getText().toString().trim(),editPriority.getSelectedItemPosition(),chosenDue[0],editRepeat.getSelectedItemPosition());
+   store.update(id,newTitle,editCategory.getText().toString().trim(),editPriority.getSelectedItemPosition(),chosenDue[0],editRepeat.getSelectedItemPosition(),ruleInterval[0],ruleDays[0]);
    ReminderReceiver.cancel(this,id);ReminderReceiver.schedule(this,id,chosenDue[0]);dialog.dismiss();render();
   }));
   dialog.show();
@@ -67,6 +69,14 @@ public class MainActivity extends Activity {
  LinearLayout row(){LinearLayout r=new LinearLayout(this);r.setOrientation(0);r.setGravity(Gravity.CENTER_VERTICAL);return r;}
  void spaced(LinearLayout parent,View v,int bottom){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(bottom);parent.addView(v,lp);}
  TextView chip(String name,boolean selected){TextView v=text(name,12,selected?Color.WHITE:INK,false);v.setGravity(Gravity.CENTER);v.setPadding(dp(11),dp(10),dp(11),dp(10));v.setBackground(shape(selected?BLUE:Color.rgb(240,244,250),12));return v;}
+ void configureRepeat(int mode,int[] interval,int[] days){configureRepeat(mode,interval,days,()->{});}
+ void configureRepeat(int mode,int[] interval,int[] days,Runnable saved){
+  if(mode==4){EditText input=new EditText(this);input.setInputType(2);input.setText(String.valueOf(Math.max(1,interval[0])));input.setSelectAllOnFocus(true);
+   new AlertDialog.Builder(this).setTitle("Tous les combien de jours ?").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",(d,w)->{try{int n=Integer.parseInt(input.getText().toString());if(n>=1&&n<=365){interval[0]=n;saved.run();}else Toast.makeText(this,"Entre 1 et 365 jours",Toast.LENGTH_SHORT).show();}catch(NumberFormatException e){Toast.makeText(this,"Nombre invalide",Toast.LENGTH_SHORT).show();}}).show();
+  }else if(mode==5){String[] weekdays={"Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"};boolean[] selected=new boolean[7];for(int j=0;j<7;j++)selected[j]=(days[0]&(1<<j))!=0;
+   new AlertDialog.Builder(this).setTitle("Choisir les jours").setMultiChoiceItems(weekdays,selected,(d,index,checked)->selected[index]=checked).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",(d,w)->{int mask=0;for(int j=0;j<7;j++)if(selected[j])mask|=1<<j;if(mask==0){Toast.makeText(this,"Sélectionne au moins un jour",Toast.LENGTH_SHORT).show();return;}days[0]=mask;saved.run();}).show();
+  }else new AlertDialog.Builder(this).setTitle("Répétition").setMessage("Choisis « Tous les X jours » ou « Jours de la semaine » pour définir des règles personnalisées.").setPositiveButton("OK",null).show();
+ }
  void dashboard(LinearLayout root){
   int[] counts=new int[4];long now=System.currentTimeMillis();Calendar cal=Calendar.getInstance();cal.setTimeInMillis(now);cal.set(Calendar.HOUR_OF_DAY,0);cal.set(Calendar.MINUTE,0);cal.set(Calendar.SECOND,0);cal.set(Calendar.MILLISECOND,0);long start=cal.getTimeInMillis();cal.add(Calendar.DAY_OF_MONTH,1);long end=cal.getTimeInMillis();
   try(Cursor c=store.all()){while(c.moveToNext()){boolean done=c.getInt(5)==1;long due=c.getLong(4);if(done)counts[3]++;else{counts[0]++;if(due<now)counts[2]++;else if(due>=start&&due<end)counts[1]++;}}}
@@ -90,9 +100,10 @@ public class MainActivity extends Activity {
   LinearLayout topFields=row();category=new EditText(this);category.setSingleLine(true);category.setTextSize(12);category.setHint("▱ Catégorie (ex : Travail)");category.setPadding(dp(8),dp(12),dp(8),dp(12));category.setBackground(shape(Color.rgb(245,249,254),12));topFields.addView(category,new LinearLayout.LayoutParams(0,dp(52),1));
   priority=new Spinner(this);priority.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,levels));priority.setSelection(1);priority.setBackground(shape(Color.rgb(245,249,254),12));LinearLayout.LayoutParams pl=new LinearLayout.LayoutParams(0,dp(52),1);pl.leftMargin=dp(8);topFields.addView(priority,pl);spaced(form,topFields,9);
   LinearLayout bottomFields=row();dateButton=new Button(this);dateButton.setText("▣  "+date(due));dateButton.setTextSize(11);dateButton.setAllCaps(false);dateButton.setTextColor(INK);dateButton.setBackground(shape(Color.rgb(245,249,254),12));dateButton.setOnClickListener(v->chooseDate());bottomFields.addView(dateButton,new LinearLayout.LayoutParams(0,dp(52),1));
-  recurrence=new Spinner(this);recurrence.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,repeats));recurrence.setBackground(shape(Color.rgb(245,249,254),12));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(0,dp(52),1);rp.leftMargin=dp(8);bottomFields.addView(recurrence,rp);spaced(form,bottomFields,12);
+  recurrence=new Spinner(this);recurrence.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,repeats));recurrence.setBackground(shape(Color.rgb(245,249,254),12));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(0,dp(52),1);rp.leftMargin=dp(8);bottomFields.addView(recurrence,rp);spaced(form,bottomFields,8);
+  TextView ruleButton=chip("⚙ Configurer la répétition",false);spaced(form,ruleButton,10);ruleButton.setOnClickListener(v->{int[] interval={repeatInterval},days={repeatDays};configureRepeat(recurrence.getSelectedItemPosition(),interval,days,()->{repeatInterval=interval[0];repeatDays=days[0];});});
   TextView add=chip("＋  Ajouter la tâche",true);add.setTextSize(15);spaced(form,add,0);
-  add.setOnClickListener(v->{String t=title.getText().toString().trim();if(t.isEmpty()){title.setError("Indique un titre");return;}if(due<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}long id=store.add(t,category.getText().toString().trim(),priority.getSelectedItemPosition(),due,recurrence.getSelectedItemPosition());ReminderReceiver.schedule(this,id,due);render();});
+  add.setOnClickListener(v->{String t=title.getText().toString().trim();if(t.isEmpty()){title.setError("Indique un titre");return;}if(due<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}long id=store.add(t,category.getText().toString().trim(),priority.getSelectedItemPosition(),due,recurrence.getSelectedItemPosition(),repeatInterval,repeatDays);ReminderReceiver.schedule(this,id,due);render();});
   LinearLayout filters=panel();spaced(root,filters,14);
   EditText search=new EditText(this);search.setSingleLine(true);search.setTextSize(13);search.setHint("⌕  Rechercher une tâche ou une catégorie…");search.setText(searchQuery);search.setPadding(dp(10),dp(10),dp(10),dp(10));search.setBackground(shape(Color.rgb(243,247,253),14));spaced(filters,search,9);
   HorizontalScrollView statusScroll=new HorizontalScrollView(this);statusScroll.setHorizontalScrollBarEnabled(false);LinearLayout statusRow=row();String[] statuses={"☷ Toutes","◷ En attente","▣ Aujourd'hui","! En retard","✓ Terminées"};
@@ -109,7 +120,7 @@ public class MainActivity extends Activity {
  void populateTasks(){
   if(taskList==null)return;taskList.removeAllViews();int count=0;long now=System.currentTimeMillis();String q=searchQuery.trim().toLowerCase(Locale.ROOT);
   try(Cursor c=store.all()){while(c.moveToNext()){
-   final long id=c.getLong(0);String name=c.getString(1),cat=c.getString(2);int p=c.getInt(3);long time=c.getLong(4);boolean done=c.getInt(5)==1;int repeat=c.getInt(6);
+   final long id=c.getLong(0);String name=c.getString(1),cat=c.getString(2);int p=c.getInt(3);long time=c.getLong(4);boolean done=c.getInt(5)==1;int repeat=c.getInt(6),repeatEvery=c.getInt(7),repeatMask=c.getInt(8);
    if(statusFilter==1&&done)continue;
    if(statusFilter==2&&(done||!new SimpleDateFormat("yyyyMMdd",Locale.getDefault()).format(new Date(time)).equals(new SimpleDateFormat("yyyyMMdd",Locale.getDefault()).format(new Date(now)))))continue;
    if(statusFilter==3&&(done||time>=now))continue;
@@ -120,7 +131,7 @@ public class MainActivity extends Activity {
    LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setPadding(dp(9),0,0,0);
    TextView heading=text(name,15,INK,true);content.addView(heading);TextView meta=text((cat==null?"":cat)+"  ▣ "+date(time)+"  · "+levels[p]+(repeat==0?"":" ↻"),11,p==3?Color.RED:p==2?Color.rgb(225,104,21):BLUE,false);content.addView(meta);
    line.addView(content,new LinearLayout.LayoutParams(0,-2,1));
-   TextView more=chip("⋮",false);more.setTextSize(21);line.addView(more);more.setOnClickListener(v->{PopupMenu popup=new PopupMenu(this,more);popup.getMenu().add("Modifier");if(!done){popup.getMenu().add("Reporter 10 min");popup.getMenu().add("Terminer");}popup.getMenu().add("Supprimer");popup.setOnMenuItemClickListener(m->{String choice=m.getTitle().toString();if(choice.equals("Modifier"))editTask(id,name,cat,p,time,repeat);else if(choice.equals("Reporter 10 min")){ReminderReceiver.cancel(this,id);ReminderReceiver.schedule(this,id,System.currentTimeMillis()+600000L);Toast.makeText(this,"Rappel reporté",Toast.LENGTH_SHORT).show();}else if(choice.equals("Terminer"))finishTask(id);else if(choice.equals("Supprimer"))new AlertDialog.Builder(this).setTitle("Supprimer cette tâche ?").setMessage(name).setNegativeButton("Annuler",null).setPositiveButton("Supprimer",(d,w)->{ReminderReceiver.cancel(this,id);store.delete(id);render();}).show();return true;});popup.show();});
+   TextView more=chip("⋮",false);more.setTextSize(21);line.addView(more);more.setOnClickListener(v->{PopupMenu popup=new PopupMenu(this,more);popup.getMenu().add("Modifier");if(!done){popup.getMenu().add("Reporter 10 min");popup.getMenu().add("Terminer");}popup.getMenu().add("Supprimer");popup.setOnMenuItemClickListener(m->{String choice=m.getTitle().toString();if(choice.equals("Modifier"))editTask(id,name,cat,p,time,repeat,repeatEvery,repeatMask);else if(choice.equals("Reporter 10 min")){ReminderReceiver.cancel(this,id);ReminderReceiver.schedule(this,id,System.currentTimeMillis()+600000L);Toast.makeText(this,"Rappel reporté",Toast.LENGTH_SHORT).show();}else if(choice.equals("Terminer"))finishTask(id);else if(choice.equals("Supprimer"))new AlertDialog.Builder(this).setTitle("Supprimer cette tâche ?").setMessage(name).setNegativeButton("Annuler",null).setPositiveButton("Supprimer",(d,w)->{ReminderReceiver.cancel(this,id);store.delete(id);render();}).show();return true;});popup.show();});
    card.addView(line);spaced(taskList,card,9);
   }}
   if(count==0)taskList.addView(label("Aucune tâche ne correspond à votre recherche.",14));
