@@ -36,6 +36,8 @@ public class MainActivity extends Activity {
  void settings(){
   LinearLayout form=new LinearLayout(this);form.setOrientation(1);form.setPadding(dp(20),dp(8),dp(20),dp(8));
   EditText[] values=new EditText[4];
+  Button notificationSettings=new Button(this);notificationSettings.setText("Autoriser les notifications Android");form.addView(notificationSettings);notificationSettings.setOnClickListener(v->{Intent i=new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS);i.putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,getPackageName());startActivity(i);});
+  if(Build.VERSION.SDK_INT>=31){Button exactAlarm=new Button(this);exactAlarm.setText("Vérifier les alarmes et rappels exacts");form.addView(exactAlarm);exactAlarm.setOnClickListener(v->{Intent i=new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,android.net.Uri.parse("package:"+getPackageName()));try{startActivity(i);}catch(Exception e){startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:"+getPackageName())));}});}
   Button backup=new Button(this);backup.setText("Exporter une sauvegarde JSON");form.addView(backup);backup.setOnClickListener(v->startBackup());
   Button restore=new Button(this);restore.setText("Restaurer une sauvegarde JSON");form.addView(restore);restore.setOnClickListener(v->startRestore());
   for(int p=0;p<4;p++){form.addView(label(levels[p]+" — intervalle (minutes)",16));values[p]=new EditText(this);values[p].setInputType(2);values[p].setSingleLine(true);values[p].setText(String.valueOf(ReminderReceiver.interval(this,p)));form.addView(values[p]);}
