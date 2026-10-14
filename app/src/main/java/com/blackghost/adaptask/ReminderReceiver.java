@@ -8,6 +8,16 @@ public class ReminderReceiver extends BroadcastReceiver {
  public static int interval(Context c,int priority){return c.getSharedPreferences("adaptask_settings",Context.MODE_PRIVATE).getInt("interval_"+priority,DEFAULT_MINUTES[Math.max(0,Math.min(3,priority))]);}
  static PendingIntent alarmIntent(Context c,long id,long when,int flags){Intent intent=new Intent(c,ReminderReceiver.class).putExtra("task_id",id).putExtra("expected",when);return PendingIntent.getBroadcast(c,(int)id,intent,flags|PendingIntent.FLAG_IMMUTABLE);}
  public static int effectiveInterval(Context c,TaskStore store,long id){int override=store.reminderMinutes(id);return override>0?override:interval(c,store.priority(id));}
+ public static long firstReminder(Context c,TaskStore store,long id,long due){
+  long now=System.currentTimeMillis();
+  long lead=Math.max(1,effectiveInterval(c,store,id))*60_000L;
+  return Math.max(now+5000L,due-lead);
+ }
+ public static void scheduleForDue(Context c,long id,long due){
+  TaskStore store=new TaskStore(c);
+  if(!store.isPending(id))return;
+  schedule(c,id,firstReminder(c,store,id,due));
+ }
  public static void schedule(Context c,long id,long when){new TaskStore(c).setNextAlarm(id,when);arm(c,id,when);}
  static void arm(Context c,long id,long when){
   AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);
