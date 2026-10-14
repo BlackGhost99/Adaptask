@@ -24,7 +24,7 @@ public class MainActivity extends Activity {
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density);}
  @Override public void onCreate(Bundle b){super.onCreate(b);store=new TaskStore(this);due=System.currentTimeMillis()+3600000L;
   if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},1);
-  try(Cursor pending=store.pending()){while(pending.moveToNext()){long id=pending.getLong(0);long when=pending.getLong(4);if(when<=0||when<System.currentTimeMillis())ReminderReceiver.schedule(this,id,System.currentTimeMillis()+60_000L);else ReminderReceiver.arm(this,id,when);}}
+  try(Cursor pending=store.pending()){while(pending.moveToNext()){long id=pending.getLong(0);long when=pending.getLong(4);if(when<=0||when==pending.getLong(3))ReminderReceiver.scheduleForDue(this,id,pending.getLong(3));else if(when<System.currentTimeMillis())ReminderReceiver.schedule(this,id,System.currentTimeMillis()+5000L);else ReminderReceiver.arm(this,id,when);}}
   render();
  }
  String date(long d){return new SimpleDateFormat("dd/MM/yyyy HH:mm",Locale.getDefault()).format(new Date(d));}
@@ -58,7 +58,7 @@ public class MainActivity extends Activity {
   ArrayList<Long> previous=new ArrayList<>();try(Cursor c=store.pending()){while(c.moveToNext())previous.add(c.getLong(0));}
   BackupManager.restoreData(this,store,new String(bytes.toByteArray(),StandardCharsets.UTF_8));
   for(long id:previous)ReminderReceiver.cancel(this,id);
-  try(Cursor c=store.pending()){while(c.moveToNext()){long id=c.getLong(0),when=c.getLong(4);ReminderReceiver.schedule(this,id,Math.max(System.currentTimeMillis()+60000L,when>0?when:c.getLong(3)));}}
+  try(Cursor c=store.pending()){while(c.moveToNext()){long id=c.getLong(0),when=c.getLong(4);if(when<=0||when==c.getLong(3))ReminderReceiver.scheduleForDue(this,id,c.getLong(3));else ReminderReceiver.schedule(this,id,Math.max(System.currentTimeMillis()+5000L,when));}}
   activeSpace=1;render();Toast.makeText(this,"Restauration terminée",Toast.LENGTH_LONG).show();
  }catch(Exception e){new AlertDialog.Builder(this).setTitle("Restauration impossible").setMessage(e.getMessage()).setPositiveButton("OK",null).show();}}
  void editTask(long id,String oldTitle,String oldCategory,int oldPriority,long oldDue,int oldRepeat,int oldInterval,int oldDays,long oldSpace,int oldReminder,int oldType,String oldDescription){
@@ -84,7 +84,7 @@ public class MainActivity extends Activity {
    if(chosenDue[0]<=System.currentTimeMillis() && store.isPending(id)){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}
    if(editType.getSelectedItemPosition()==1&&editRepeat.getSelectedItemPosition()!=0){Toast.makeText(this,"Un incident ne peut pas être récurrent",Toast.LENGTH_LONG).show();return;}
    store.update(id,newTitle,editCategory.getText().toString().trim(),editPriority.getSelectedItemPosition(),chosenDue[0],editRepeat.getSelectedItemPosition(),ruleInterval[0],ruleDays[0],chosenSpace[0],chosenReminder[0],editType.getSelectedItemPosition(),editDescription.getText().toString().trim());
-   ReminderReceiver.cancel(this,id);if(store.isPending(id))ReminderReceiver.schedule(this,id,chosenDue[0]);dialog.dismiss();render();
+   ReminderReceiver.cancel(this,id);if(store.isPending(id))ReminderReceiver.scheduleForDue(this,id,chosenDue[0]);dialog.dismiss();render();
   }));
   dialog.show();
  }
@@ -171,7 +171,7 @@ public class MainActivity extends Activity {
   TextView ruleButton=chip("⚙ Configurer la répétition",false);spaced(form,ruleButton,10);ruleButton.setOnClickListener(v->{int[] interval={repeatInterval},days={repeatDays};configureRepeat(recurrence.getSelectedItemPosition(),interval,days,()->{repeatInterval=interval[0];repeatDays=days[0];});});
   TextView reminderControl=chip(reminderDescription(reminderOverride),false);spaced(form,reminderControl,10);reminderControl.setOnClickListener(v->{int[] value={reminderOverride};chooseReminder(value,reminderControl,()->reminderOverride=value[0]);});
   TextView add=chip("＋  Ajouter la tâche",true);add.setTextSize(15);spaced(form,add,0);
-  add.setOnClickListener(v->{String t=title.getText().toString().trim();if(t.isEmpty()){title.setError("Indique un titre");return;}if(due<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}if(taskType.getSelectedItemPosition()==1&&recurrence.getSelectedItemPosition()!=0){Toast.makeText(this,"Un incident ne peut pas être récurrent",Toast.LENGTH_LONG).show();return;}long id=store.add(t,category.getText().toString().trim(),priority.getSelectedItemPosition(),due,recurrence.getSelectedItemPosition(),repeatInterval,repeatDays,activeSpace,reminderOverride,taskType.getSelectedItemPosition(),description.getText().toString().trim());ReminderReceiver.schedule(this,id,due);render();});
+  add.setOnClickListener(v->{String t=title.getText().toString().trim();if(t.isEmpty()){title.setError("Indique un titre");return;}if(due<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}if(taskType.getSelectedItemPosition()==1&&recurrence.getSelectedItemPosition()!=0){Toast.makeText(this,"Un incident ne peut pas être récurrent",Toast.LENGTH_LONG).show();return;}long id=store.add(t,category.getText().toString().trim(),priority.getSelectedItemPosition(),due,recurrence.getSelectedItemPosition(),repeatInterval,repeatDays,activeSpace,reminderOverride,taskType.getSelectedItemPosition(),description.getText().toString().trim());ReminderReceiver.scheduleForDue(this,id,due);render();});
   LinearLayout filters=panel();spaced(root,filters,14);
   EditText search=new EditText(this);search.setSingleLine(true);search.setTextSize(13);search.setHint("⌕  Rechercher une tâche ou une catégorie…");search.setText(searchQuery);search.setPadding(dp(10),dp(10),dp(10),dp(10));search.setBackground(shape(Color.rgb(243,247,253),14));spaced(filters,search,9);
   HorizontalScrollView statusScroll=new HorizontalScrollView(this);statusScroll.setHorizontalScrollBarEnabled(false);LinearLayout statusRow=row();String[] statuses={"☷ Toutes","◷ En attente","▣ Aujourd'hui","! En retard","✓ Terminées"};
