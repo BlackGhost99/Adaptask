@@ -6,7 +6,7 @@ import java.util.*;
 public class TaskStore extends SQLiteOpenHelper {
  public TaskStore(Context c){super(c,"adaptask.db",null,3);}
  public void onCreate(SQLiteDatabase db){db.execSQL("CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,category TEXT NOT NULL,priority INTEGER NOT NULL,due INTEGER NOT NULL,done INTEGER NOT NULL DEFAULT 0,recurrence INTEGER NOT NULL DEFAULT 0,next_alarm INTEGER NOT NULL DEFAULT 0)");}
- public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion){if(oldVersion<2)db.execSQL("ALTER TABLE tasks ADD COLUMN recurrence INTEGER NOT NULL DEFAULT 0");if(oldVersion<3)db.execSQL("ALTER TABLE tasks ADD COLUMN next_alarm INTEGER NOT NULL DEFAULT 0");}
+ public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion){if(oldVersion<2)db.execSQL("ALTER TABLE tasks ADD COLUMN recurrence INTEGER NOT NULL DEFAULT 0");if(oldVersion<3){db.execSQL("ALTER TABLE tasks ADD COLUMN next_alarm INTEGER NOT NULL DEFAULT 0");db.execSQL("UPDATE tasks SET next_alarm=due WHERE done=0");}}
  public long add(String title,String category,int priority,long due,int recurrence){ContentValues v=new ContentValues();v.put("title",title);v.put("category",category);v.put("priority",priority);v.put("due",due);v.put("recurrence",recurrence);v.put("next_alarm",due);return getWritableDatabase().insert("tasks",null,v);}
  public void update(long id,String title,String category,int priority,long due,int recurrence){
   ContentValues v=new ContentValues();v.put("title",title);v.put("category",category);v.put("priority",priority);v.put("due",due);v.put("recurrence",recurrence);v.put("next_alarm",due);
