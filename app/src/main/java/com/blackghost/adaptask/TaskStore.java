@@ -4,12 +4,28 @@ import android.database.Cursor;
 import android.database.sqlite.*;
 import java.util.*;
 public class TaskStore extends SQLiteOpenHelper {
- public TaskStore(Context c){super(c,"adaptask.db",null,4);}
- public void onCreate(SQLiteDatabase db){db.execSQL("CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,category TEXT NOT NULL,priority INTEGER NOT NULL,due INTEGER NOT NULL,done INTEGER NOT NULL DEFAULT 0,recurrence INTEGER NOT NULL DEFAULT 0,next_alarm INTEGER NOT NULL DEFAULT 0,repeat_interval INTEGER NOT NULL DEFAULT 1,repeat_days INTEGER NOT NULL DEFAULT 0)");}
- public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion){if(oldVersion<2)db.execSQL("ALTER TABLE tasks ADD COLUMN recurrence INTEGER NOT NULL DEFAULT 0");if(oldVersion<3){db.execSQL("ALTER TABLE tasks ADD COLUMN next_alarm INTEGER NOT NULL DEFAULT 0");db.execSQL("UPDATE tasks SET next_alarm=due WHERE done=0");}if(oldVersion<4){db.execSQL("ALTER TABLE tasks ADD COLUMN repeat_interval INTEGER NOT NULL DEFAULT 1");db.execSQL("ALTER TABLE tasks ADD COLUMN repeat_days INTEGER NOT NULL DEFAULT 0");}}
- public long add(String title,String category,int priority,long due,int recurrence,int interval,int days){ContentValues v=new ContentValues();v.put("title",title);v.put("category",category);v.put("priority",priority);v.put("due",due);v.put("recurrence",recurrence);v.put("repeat_interval",Math.max(1,interval));v.put("repeat_days",recurrence==3?dayOfMonth(due):days);v.put("next_alarm",due);return getWritableDatabase().insert("tasks",null,v);}
- public void update(long id,String title,String category,int priority,long due,int recurrence,int interval,int days){
-  ContentValues v=new ContentValues();v.put("title",title);v.put("category",category);v.put("priority",priority);v.put("due",due);v.put("recurrence",recurrence);v.put("repeat_interval",Math.max(1,interval));v.put("repeat_days",days);v.put("next_alarm",due);
+ public TaskStore(Context c){super(c,"adaptask.db",null,5);}
+ public void onCreate(SQLiteDatabase db){createSpaces(db);db.execSQL("CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,category TEXT NOT NULL,priority INTEGER NOT NULL,due INTEGER NOT NULL,done INTEGER NOT NULL DEFAULT 0,recurrence INTEGER NOT NULL DEFAULT 0,next_alarm INTEGER NOT NULL DEFAULT 0,repeat_interval INTEGER NOT NULL DEFAULT 1,repeat_days INTEGER NOT NULL DEFAULT 0,space_id INTEGER NOT NULL DEFAULT 1)");}
+ public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion){if(oldVersion<2)db.execSQL("ALTER TABLE tasks ADD COLUMN recurrence INTEGER NOT NULL DEFAULT 0");if(oldVersion<3){db.execSQL("ALTER TABLE tasks ADD COLUMN next_alarm INTEGER NOT NULL DEFAULT 0");db.execSQL("UPDATE tasks SET next_alarm=due WHERE done=0");}if(oldVersion<4){db.execSQL("ALTER TABLE tasks ADD COLUMN repeat_interval INTEGER NOT NULL DEFAULT 1");db.execSQL("ALTER TABLE tasks ADD COLUMN repeat_days INTEGER NOT NULL DEFAULT 0");}if(oldVersion<5){createSpaces(db);db.execSQL("ALTER TABLE tasks ADD COLUMN space_id INTEGER NOT NULL DEFAULT 1");db.execSQL("INSERT OR IGNORE INTO categories(space_id,name) SELECT 1,TRIM(category) FROM tasks WHERE TRIM(category)<>'' GROUP BY LOWER(TRIM(category))");}}
+ static void createSpaces(SQLiteDatabase db){
+  db.execSQL("CREATE TABLE IF NOT EXISTS spaces(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL UNIQUE COLLATE NOCASE)");
+  db.execSQL("INSERT OR IGNORE INTO spaces(id,name) VALUES(1,'Général')");
+  db.execSQL("CREATE TABLE IF NOT EXISTS categories(id INTEGER PRIMARY KEY AUTOINCREMENT,space_id INTEGER NOT NULL,name TEXT NOT NULL COLLATE NOCASE,UNIQUE(space_id,name))");
+ }
+ public Cursor spaces(){return getReadableDatabase().rawQuery("SELECT id,name FROM spaces ORDER BY id",null);}
+ public Cursor categories(long space){return getReadableDatabase().rawQuery("SELECT id,name FROM categories WHERE space_id=? ORDER BY name COLLATE NOCASE",new String[]{String.valueOf(space)});}
+ public long addSpace(String name){ContentValues v=new ContentValues();v.put("name",name.trim());return getWritableDatabase().insert("spaces",null,v);}
+ public boolean renameSpace(long id,String name){if(id==1)return false;ContentValues v=new ContentValues();v.put("name",name.trim());return getWritableDatabase().update("spaces",v,"id=?",new String[]{String.valueOf(id)})>0;}
+ public long addCategory(long space,String name){ContentValues v=new ContentValues();v.put("space_id",space);v.put("name",name.trim());return getWritableDatabase().insert("categories",null,v);}
+ public void ensureCategory(long space,String name){if(name==null||name.trim().isEmpty())return;getWritableDatabase().execSQL("INSERT OR IGNORE INTO categories(space_id,name) VALUES(?,?)",new Object[]{space,name.trim()});}
+ public void renameCategory(long id,long space,String oldName,String newName){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{
+  ContentValues v=new ContentValues();v.put("name",newName.trim());db.update("categories",v,"id=? AND space_id=?",new String[]{String.valueOf(id),String.valueOf(space)});
+  ContentValues t=new ContentValues();t.put("category",newName.trim());db.update("tasks",t,"space_id=? AND category=? COLLATE NOCASE",new String[]{String.valueOf(space),oldName});db.setTransactionSuccessful();
+ }finally{db.endTransaction();}}
+ public void moveTask(long id,long space){ContentValues v=new ContentValues();v.put("space_id",space);getWritableDatabase().update("tasks",v,"id=?",new String[]{String.valueOf(id)});try(Cursor c=getReadableDatabase().rawQuery("SELECT category FROM tasks WHERE id=?",new String[]{String.valueOf(id)})){if(c.moveToFirst())ensureCategory(space,c.getString(0));}}
+ public long add(String title,String category,int priority,long due,int recurrence,int interval,int days,long spaceId){ensureCategory(spaceId,category);ContentValues v=new ContentValues();v.put("space_id",spaceId);v.put("title",title);v.put("category",category);v.put("priority",priority);v.put("due",due);v.put("recurrence",recurrence);v.put("repeat_interval",Math.max(1,interval));v.put("repeat_days",recurrence==3?dayOfMonth(due):days);v.put("next_alarm",due);return getWritableDatabase().insert("tasks",null,v);}
+ public void update(long id,String title,String category,int priority,long due,int recurrence,int interval,int days,long spaceId){
+  ensureCategory(spaceId,category);ContentValues v=new ContentValues();v.put("title",title);v.put("category",category);v.put("priority",priority);v.put("due",due);v.put("recurrence",recurrence);v.put("repeat_interval",Math.max(1,interval));v.put("repeat_days",days);v.put("next_alarm",due);
   getWritableDatabase().update("tasks",v,"id=?",new String[]{String.valueOf(id)});
  }
  public void delete(long id){getWritableDatabase().delete("tasks","id=?",new String[]{String.valueOf(id)});}
@@ -40,7 +56,7 @@ public class TaskStore extends SQLiteOpenHelper {
   }
   return cal.getTimeInMillis();
  }
- public Cursor all(){return getReadableDatabase().rawQuery("SELECT id,title,category,priority,due,done,recurrence,repeat_interval,repeat_days FROM tasks ORDER BY done ASC,priority DESC,due ASC",null);}
+ public Cursor all(){return getReadableDatabase().rawQuery("SELECT id,title,category,priority,due,done,recurrence,repeat_interval,repeat_days,space_id FROM tasks ORDER BY done ASC,priority DESC,due ASC",null);}
  public Cursor pending(){return getReadableDatabase().rawQuery("SELECT id,title,priority,due,next_alarm FROM tasks WHERE done=0",null);}
  public long nextAlarm(long id){try(Cursor c=getReadableDatabase().rawQuery("SELECT next_alarm FROM tasks WHERE id=? AND done=0",new String[]{String.valueOf(id)})){return c.moveToFirst()?c.getLong(0):0;}}
  public void setNextAlarm(long id,long when){ContentValues v=new ContentValues();v.put("next_alarm",when);getWritableDatabase().update("tasks",v,"id=? AND done=0",new String[]{String.valueOf(id)});}
