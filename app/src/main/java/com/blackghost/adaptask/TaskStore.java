@@ -7,7 +7,7 @@ public class TaskStore extends SQLiteOpenHelper {
  public TaskStore(Context c){super(c,"adaptask.db",null,4);}
  public void onCreate(SQLiteDatabase db){db.execSQL("CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,category TEXT NOT NULL,priority INTEGER NOT NULL,due INTEGER NOT NULL,done INTEGER NOT NULL DEFAULT 0,recurrence INTEGER NOT NULL DEFAULT 0,next_alarm INTEGER NOT NULL DEFAULT 0,repeat_interval INTEGER NOT NULL DEFAULT 1,repeat_days INTEGER NOT NULL DEFAULT 0)");}
  public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion){if(oldVersion<2)db.execSQL("ALTER TABLE tasks ADD COLUMN recurrence INTEGER NOT NULL DEFAULT 0");if(oldVersion<3){db.execSQL("ALTER TABLE tasks ADD COLUMN next_alarm INTEGER NOT NULL DEFAULT 0");db.execSQL("UPDATE tasks SET next_alarm=due WHERE done=0");}if(oldVersion<4){db.execSQL("ALTER TABLE tasks ADD COLUMN repeat_interval INTEGER NOT NULL DEFAULT 1");db.execSQL("ALTER TABLE tasks ADD COLUMN repeat_days INTEGER NOT NULL DEFAULT 0");}}
- public long add(String title,String category,int priority,long due,int recurrence,int interval,int days){ContentValues v=new ContentValues();v.put("title",title);v.put("category",category);v.put("priority",priority);v.put("due",due);v.put("recurrence",recurrence);v.put("repeat_interval",Math.max(1,interval));v.put("repeat_days",days);v.put("next_alarm",due);return getWritableDatabase().insert("tasks",null,v);}
+ public long add(String title,String category,int priority,long due,int recurrence,int interval,int days){ContentValues v=new ContentValues();v.put("title",title);v.put("category",category);v.put("priority",priority);v.put("due",due);v.put("recurrence",recurrence);v.put("repeat_interval",Math.max(1,interval));v.put("repeat_days",recurrence==3?dayOfMonth(due):days);v.put("next_alarm",due);return getWritableDatabase().insert("tasks",null,v);}
  public void update(long id,String title,String category,int priority,long due,int recurrence,int interval,int days){
   ContentValues v=new ContentValues();v.put("title",title);v.put("category",category);v.put("priority",priority);v.put("due",due);v.put("recurrence",recurrence);v.put("repeat_interval",Math.max(1,interval));v.put("repeat_days",days);v.put("next_alarm",due);
   getWritableDatabase().update("tasks",v,"id=?",new String[]{String.valueOf(id)});
@@ -25,9 +25,10 @@ public class TaskStore extends SQLiteOpenHelper {
    db.update("tasks",v,"id=? AND done=0",new String[]{String.valueOf(id)});db.setTransactionSuccessful();return next;
   }finally{db.endTransaction();}
  }
+ static int dayOfMonth(long millis){Calendar c=Calendar.getInstance();c.setTimeInMillis(millis);return c.get(Calendar.DAY_OF_MONTH);}
  public static long nextDue(long due,int recurrence,int interval,int days,long now){
   Calendar cal=Calendar.getInstance();cal.setTimeInMillis(due);interval=Math.max(1,interval);
-  if(recurrence==3){int day=cal.get(Calendar.DAY_OF_MONTH);int hour=cal.get(Calendar.HOUR_OF_DAY),minute=cal.get(Calendar.MINUTE),second=cal.get(Calendar.SECOND);
+  if(recurrence==3){int day=days>=1&&days<=31?days:cal.get(Calendar.DAY_OF_MONTH);int hour=cal.get(Calendar.HOUR_OF_DAY),minute=cal.get(Calendar.MINUTE),second=cal.get(Calendar.SECOND);
    do{cal.set(Calendar.DAY_OF_MONTH,1);cal.add(Calendar.MONTH,1);int max=cal.getActualMaximum(Calendar.DAY_OF_MONTH);cal.set(Calendar.DAY_OF_MONTH,Math.min(day,max));cal.set(Calendar.HOUR_OF_DAY,hour);cal.set(Calendar.MINUTE,minute);cal.set(Calendar.SECOND,second);}while(cal.getTimeInMillis()<=now);
   }else if(recurrence==5){
    if(days==0)days=1<<(cal.get(Calendar.DAY_OF_WEEK)-1);
