@@ -9,11 +9,12 @@ import android.widget.*;
 import java.text.*;
 import java.util.*;
 public class MainActivity extends Activity {
- TaskStore store; EditText title,category; Spinner priority; Button dateButton; long due;
+ TaskStore store; EditText title,category; Spinner priority,recurrence; Button dateButton; long due;
  int statusFilter=0,priorityFilter=0;
  String searchQuery="";
  LinearLayout taskList;
  final String[] levels={"Faible","Normale","Urgente","Critique"};
+ final String[] repeats={"Une seule fois","Chaque jour","Chaque semaine"};
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density);}
  @Override public void onCreate(Bundle b){super.onCreate(b);store=new TaskStore(this);due=System.currentTimeMillis()+3600000L;
   if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},1);
@@ -31,12 +32,13 @@ public class MainActivity extends Activity {
    editor.apply();render();Toast.makeText(this,"Intervalles enregistrés",Toast.LENGTH_SHORT).show();
   }).show();
  }
- void editTask(long id,String oldTitle,String oldCategory,int oldPriority,long oldDue){
+ void editTask(long id,String oldTitle,String oldCategory,int oldPriority,long oldDue,int oldRepeat){
   final long[] chosenDue={oldDue};
   LinearLayout form=new LinearLayout(this);form.setOrientation(1);form.setPadding(dp(20),dp(8),dp(20),dp(8));
   EditText editTitle=new EditText(this);editTitle.setHint("Titre");editTitle.setText(oldTitle);form.addView(editTitle);
   EditText editCategory=new EditText(this);editCategory.setHint("Catégorie");editCategory.setText(oldCategory);form.addView(editCategory);
   Spinner editPriority=new Spinner(this);editPriority.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,levels));editPriority.setSelection(oldPriority);form.addView(editPriority);
+  Spinner editRepeat=new Spinner(this);editRepeat.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,repeats));editRepeat.setSelection(oldRepeat);form.addView(editRepeat);
   Button editDate=new Button(this);editDate.setText("Échéance : "+date(chosenDue[0]));form.addView(editDate);
   editDate.setOnClickListener(v->{Calendar cal=Calendar.getInstance();cal.setTimeInMillis(chosenDue[0]);new DatePickerDialog(this,(view,y,m,d)->{
    new TimePickerDialog(this,(tv,h,min)->{Calendar x=Calendar.getInstance();x.set(y,m,d,h,min,0);chosenDue[0]=x.getTimeInMillis();editDate.setText("Échéance : "+date(chosenDue[0]));},cal.get(Calendar.HOUR_OF_DAY),cal.get(Calendar.MINUTE),true).show();
@@ -46,7 +48,7 @@ public class MainActivity extends Activity {
    String newTitle=editTitle.getText().toString().trim();
    if(newTitle.isEmpty()){editTitle.setError("Titre obligatoire");return;}
    if(chosenDue[0]<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}
-   store.update(id,newTitle,editCategory.getText().toString().trim(),editPriority.getSelectedItemPosition(),chosenDue[0]);
+   store.update(id,newTitle,editCategory.getText().toString().trim(),editPriority.getSelectedItemPosition(),chosenDue[0],editRepeat.getSelectedItemPosition());
    ReminderReceiver.cancel(this,id);ReminderReceiver.schedule(this,id,chosenDue[0]);dialog.dismiss();render();
   }));
   dialog.show();
@@ -86,10 +88,11 @@ public class MainActivity extends Activity {
   category=new EditText(this);category.setHint("Catégorie libre (ex : Travail)");root.addView(category);
   priority=new Spinner(this);String[] labels=new String[4];for(int p=0;p<4;p++)labels[p]=levels[p]+" · "+ReminderReceiver.interval(this,p)+" min";
   priority.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,labels));priority.setSelection(1);root.addView(priority);
+  recurrence=new Spinner(this);recurrence.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,repeats));root.addView(label("Répétition",15));root.addView(recurrence);
   dateButton=new Button(this);dateButton.setText("Échéance : "+date(due));root.addView(dateButton);
   dateButton.setOnClickListener(v->{Calendar cal=Calendar.getInstance();cal.setTimeInMillis(due);new DatePickerDialog(this,(view,y,m,d)->{new TimePickerDialog(this,(tv,h,min)->{Calendar x=Calendar.getInstance();x.set(y,m,d,h,min,0);due=x.getTimeInMillis();dateButton.setText("Échéance : "+date(due));},cal.get(Calendar.HOUR_OF_DAY),cal.get(Calendar.MINUTE),true).show();},cal.get(Calendar.YEAR),cal.get(Calendar.MONTH),cal.get(Calendar.DAY_OF_MONTH)).show();});
   Button add=new Button(this);add.setText("Ajouter la tâche");root.addView(add);
-  add.setOnClickListener(v->{String t=title.getText().toString().trim();if(t.isEmpty()){title.setError("Indique un titre");return;}if(due<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}long id=store.add(t,category.getText().toString().trim(),priority.getSelectedItemPosition(),due);ReminderReceiver.schedule(this,id,due);render();});
+  add.setOnClickListener(v->{String t=title.getText().toString().trim();if(t.isEmpty()){title.setError("Indique un titre");return;}if(due<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}long id=store.add(t,category.getText().toString().trim(),priority.getSelectedItemPosition(),due,recurrence.getSelectedItemPosition());ReminderReceiver.schedule(this,id,due);render();});
   root.addView(label("Mes tâches",22));
   LinearLayout filters=new LinearLayout(this);filters.setOrientation(1);
   filters.addView(label("Filtrer par statut",15));
@@ -128,7 +131,7 @@ public class MainActivity extends Activity {
   long filterNow=System.currentTimeMillis();
   String query=searchQuery.trim().toLowerCase(Locale.ROOT);
   try(Cursor c=store.all()){while(c.moveToNext()){
-   final long id=c.getLong(0);String name=c.getString(1),cat=c.getString(2);int p=c.getInt(3);long time=c.getLong(4);boolean done=c.getInt(5)==1;
+   final long id=c.getLong(0);String name=c.getString(1),cat=c.getString(2);int p=c.getInt(3);long time=c.getLong(4);boolean done=c.getInt(5)==1;int repeat=c.getInt(6);
    if(statusFilter==1&&done)continue;
    if(statusFilter==2&&(done||time>=filterNow))continue;
    if(statusFilter==3&&!done)continue;
@@ -136,12 +139,12 @@ public class MainActivity extends Activity {
    if(!query.isEmpty()&&!name.toLowerCase(Locale.ROOT).contains(query)&&!(cat==null?"":cat).toLowerCase(Locale.ROOT).contains(query))continue;
    visibleCount++;
    LinearLayout item=new LinearLayout(this);item.setOrientation(1);item.setPadding(dp(10),dp(10),dp(10),dp(10));
-   TextView text=label((done?"✓ ":"● ")+name+"\n"+cat+" · "+date(time)+" · "+levels[p],16);item.addView(text);
+   TextView text=label((done?"✓ ":"● ")+name+"\n"+cat+" · "+date(time)+" · "+levels[p]+(repeat==0?"":" · "+repeats[repeat]),16);item.addView(text);
    if(!done){
     LinearLayout actions=new LinearLayout(this);actions.setOrientation(LinearLayout.HORIZONTAL);
-    Button edit=new Button(this);edit.setText("Modifier");edit.setOnClickListener(v->editTask(id,name,cat,p,time));actions.addView(edit,new LinearLayout.LayoutParams(0,-2,1));
+    Button edit=new Button(this);edit.setText("Modifier");edit.setOnClickListener(v->editTask(id,name,cat,p,time,repeat));actions.addView(edit,new LinearLayout.LayoutParams(0,-2,1));
     Button snooze=new Button(this);snooze.setText("Reporter 10 min");snooze.setOnClickListener(v->{ReminderReceiver.schedule(this,id,System.currentTimeMillis()+600000L);Toast.makeText(this,"Rappel reporté de 10 min",Toast.LENGTH_SHORT).show();});actions.addView(snooze,new LinearLayout.LayoutParams(0,-2,1));
-    Button finish=new Button(this);finish.setText("Terminer");finish.setOnClickListener(v->{store.done(id);ReminderReceiver.cancel(this,id);render();});actions.addView(finish,new LinearLayout.LayoutParams(0,-2,1));item.addView(actions);
+    Button finish=new Button(this);finish.setText("Terminer");finish.setOnClickListener(v->{ReminderReceiver.cancel(this,id);long next=store.complete(id);if(next>0)ReminderReceiver.schedule(this,id,next);render();});actions.addView(finish,new LinearLayout.LayoutParams(0,-2,1));item.addView(actions);
    }
    Button delete=new Button(this);delete.setText("Supprimer");
    delete.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Supprimer cette tâche ?").setMessage(name).setNegativeButton("Annuler",null).setPositiveButton("Supprimer",(dialog,which)->{ReminderReceiver.cancel(this,id);store.delete(id);render();}).show());
