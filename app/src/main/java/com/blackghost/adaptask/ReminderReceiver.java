@@ -2,8 +2,12 @@ package com.blackghost.adaptask;
 import android.app.*;
 import android.content.*;
 import android.os.Build;
-public class ReminderReceiver extends android.content.BroadcastReceiver {
+public class ReminderReceiver extends BroadcastReceiver {
  public static final String CHANNEL="adaptask_reminders";
+ public static final int[] DEFAULT_MINUTES={240,60,15,5};
+ public static int interval(Context c,int priority){
+  return c.getSharedPreferences("adaptask_settings",Context.MODE_PRIVATE).getInt("interval_"+priority,DEFAULT_MINUTES[Math.max(0,Math.min(3,priority))]);
+ }
  public static void schedule(Context c,long id,long when){
   AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);
   Intent intent=new Intent(c,ReminderReceiver.class).putExtra("task_id",id);
@@ -25,7 +29,6 @@ public class ReminderReceiver extends android.content.BroadcastReceiver {
   PendingIntent tap=PendingIntent.getActivity(c,(int)id,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
   Notification n=new Notification.Builder(c,CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle("Rappel Adaptask").setContentText(store.title(id)).setContentIntent(tap).setAutoCancel(true).build();
   if(Build.VERSION.SDK_INT<33||c.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)==android.content.pm.PackageManager.PERMISSION_GRANTED)nm.notify((int)id,n);
-  int p=store.priority(id);long interval=(p==3?5:p==2?15:p==1?60:240)*60_000L;
-  schedule(c,id,System.currentTimeMillis()+interval);
+  schedule(c,id,System.currentTimeMillis()+interval(c,store.priority(id))*60_000L);
  }
 }
