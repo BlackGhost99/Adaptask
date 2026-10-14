@@ -5,7 +5,7 @@ import android.database.sqlite.SQLiteDatabase;
 import org.json.*;
 import java.util.*;
 public final class BackupManager {
- private static final String[] TASK={"id","title","category","priority","due","done","recurrence","next_alarm","repeat_interval","repeat_days","space_id","reminder_minutes"};
+ private static final String[] TASK={"id","title","category","priority","due","done","recurrence","next_alarm","repeat_interval","repeat_days","space_id","reminder_minutes","task_type","description","created_at","closed_at"};
  private static final String[] SPACE={"id","name"};
  private static final String[] CATEGORY={"id","space_id","name"};
  private static JSONArray exportTable(SQLiteDatabase db,String table,String[] columns)throws JSONException{
@@ -20,8 +20,8 @@ public final class BackupManager {
   return root.toString(2);
  }
  private static ContentValues values(JSONObject row,String[] columns)throws JSONException{
-  ContentValues v=new ContentValues();for(String col:columns){if(!row.has(col)||row.isNull(col))throw new JSONException("Champ manquant : "+col);
-   if(col.equals("title")||col.equals("category")||col.equals("name"))v.put(col,row.getString(col));else v.put(col,row.getLong(col));}
+  ContentValues v=new ContentValues();for(String col:columns){if(!row.has(col)||row.isNull(col)){if(col.equals("task_type")||col.equals("created_at")||col.equals("closed_at")){v.put(col,0);continue;}if(col.equals("description")){v.put(col,"");continue;}throw new JSONException("Champ manquant : "+col);}
+   if(col.equals("title")||col.equals("category")||col.equals("name")||col.equals("description"))v.put(col,row.getString(col));else v.put(col,row.getLong(col));}
   return v;
  }
  public static void restoreData(Context context,TaskStore store,String json)throws JSONException{
@@ -33,7 +33,7 @@ public final class BackupManager {
   for(int j=0;j<spaces.length();j++){ContentValues v=values(spaces.getJSONObject(j),SPACE);long id=v.getAsLong("id");if(id<=0||!spaceIds.add(id)||v.getAsString("name").trim().isEmpty())throw new JSONException("Espace invalide");if(id==1)hasGeneral=true;ss.add(v);}
   if(!hasGeneral)throw new JSONException("Espace Général manquant");
   for(int j=0;j<categories.length();j++){ContentValues v=values(categories.getJSONObject(j),CATEGORY);if(v.getAsLong("id")<=0||!spaceIds.contains(v.getAsLong("space_id"))||v.getAsString("name").trim().isEmpty())throw new JSONException("Catégorie invalide");cc.add(v);}
-  for(int j=0;j<tasks.length();j++){ContentValues v=values(tasks.getJSONObject(j),TASK);long id=v.getAsLong("id");if(id<=0||!taskIds.add(id)||!spaceIds.contains(v.getAsLong("space_id"))||v.getAsString("title").trim().isEmpty()||v.getAsInteger("priority")<0||v.getAsInteger("priority")>3||v.getAsInteger("recurrence")<0||v.getAsInteger("recurrence")>5||v.getAsLong("due")<=0||v.getAsInteger("reminder_minutes")<0||v.getAsInteger("reminder_minutes")>10080)throw new JSONException("Tâche invalide");tt.add(v);}
+  for(int j=0;j<tasks.length();j++){ContentValues v=values(tasks.getJSONObject(j),TASK);long id=v.getAsLong("id");if(id<=0||!taskIds.add(id)||!spaceIds.contains(v.getAsLong("space_id"))||v.getAsString("title").trim().isEmpty()||v.getAsInteger("priority")<0||v.getAsInteger("priority")>3||v.getAsInteger("recurrence")<0||v.getAsInteger("recurrence")>5||v.getAsInteger("task_type")<0||v.getAsInteger("task_type")>1||v.getAsLong("due")<=0||v.getAsInteger("reminder_minutes")<0||v.getAsInteger("reminder_minutes")>10080)throw new JSONException("Tâche invalide");tt.add(v);}
   JSONObject settings=root.getJSONObject("settings");int[] intervals=new int[4];for(int p=0;p<4;p++){intervals[p]=settings.getInt("interval_"+p);if(intervals[p]<1||intervals[p]>10080)throw new JSONException("Paramètre de rappel invalide");}
   SQLiteDatabase db=store.getWritableDatabase();db.beginTransaction();
   try{
