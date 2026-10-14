@@ -48,10 +48,36 @@ public class MainActivity extends Activity {
   }));
   dialog.show();
  }
+ void dashboard(LinearLayout root){
+  int pending=0,overdue=0,today=0,completed=0;
+  long now=System.currentTimeMillis();
+  Calendar cal=Calendar.getInstance();cal.setTimeInMillis(now);cal.set(Calendar.HOUR_OF_DAY,0);cal.set(Calendar.MINUTE,0);cal.set(Calendar.SECOND,0);cal.set(Calendar.MILLISECOND,0);
+  long start=cal.getTimeInMillis();cal.add(Calendar.DAY_OF_MONTH,1);long end=cal.getTimeInMillis();
+  try(Cursor c=store.all()){while(c.moveToNext()){
+   boolean done=c.getInt(5)==1;long deadline=c.getLong(4);
+   if(done){completed++;continue;}
+   pending++;
+   if(deadline<now)overdue++;
+   else if(deadline>=start&&deadline<end)today++;
+  }}
+  root.addView(label("Tableau de bord",21));
+  LinearLayout line1=new LinearLayout(this);line1.setOrientation(LinearLayout.HORIZONTAL);
+  line1.addView(stat("En attente",pending,Color.rgb(30,64,110)),new LinearLayout.LayoutParams(0,-2,1));
+  line1.addView(stat("Aujourd'hui",today,Color.rgb(28,100,87)),new LinearLayout.LayoutParams(0,-2,1));root.addView(line1);
+  LinearLayout line2=new LinearLayout(this);line2.setOrientation(LinearLayout.HORIZONTAL);
+  line2.addView(stat("En retard",overdue,Color.rgb(169,54,54)),new LinearLayout.LayoutParams(0,-2,1));
+  line2.addView(stat("Terminées",completed,Color.rgb(86,91,104)),new LinearLayout.LayoutParams(0,-2,1));root.addView(line2);
+ }
+ LinearLayout stat(String name,int value,int color){
+  LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(dp(12),dp(12),dp(12),dp(12));
+  TextView count=label(String.valueOf(value),26);count.setTextColor(color);card.addView(count);
+  card.addView(label(name,14));return card;
+ }
  void render(){
   ScrollView scroll=new ScrollView(this);LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(18),dp(22),dp(18),dp(22));scroll.addView(root);setContentView(scroll);
   TextView heading=label("Adaptask",28);heading.setTextColor(Color.rgb(29,64,112));root.addView(heading);
   root.addView(label("Vos tâches, vos règles, votre rythme",15));
+  dashboard(root);
   Button settingsButton=new Button(this);settingsButton.setText("⚙ Personnaliser les rappels");settingsButton.setOnClickListener(v->settings());root.addView(settingsButton);
   title=new EditText(this);title.setHint("Nouvelle tâche");root.addView(title);
   category=new EditText(this);category.setHint("Catégorie libre (ex : Travail)");root.addView(category);
