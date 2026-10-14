@@ -8,6 +8,11 @@ public class TaskStore extends SQLiteOpenHelper {
  public void onCreate(SQLiteDatabase db){db.execSQL("CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,category TEXT NOT NULL,priority INTEGER NOT NULL,due INTEGER NOT NULL,done INTEGER NOT NULL DEFAULT 0)");}
  public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion){}
  public long add(String title,String category,int priority,long due){ContentValues v=new ContentValues();v.put("title",title);v.put("category",category);v.put("priority",priority);v.put("due",due);return getWritableDatabase().insert("tasks",null,v);}
+ public void update(long id,String title,String category,int priority,long due){
+  ContentValues v=new ContentValues();v.put("title",title);v.put("category",category);v.put("priority",priority);v.put("due",due);
+  getWritableDatabase().update("tasks",v,"id=?",new String[]{String.valueOf(id)});
+ }
+ public void delete(long id){getWritableDatabase().delete("tasks","id=?",new String[]{String.valueOf(id)});}
  public void done(long id){ContentValues v=new ContentValues();v.put("done",1);getWritableDatabase().update("tasks",v,"id=?",new String[]{String.valueOf(id)});}
  public Cursor all(){return getReadableDatabase().rawQuery("SELECT id,title,category,priority,due,done FROM tasks ORDER BY done ASC,priority DESC,due ASC",null);}
  public Cursor pending(){return getReadableDatabase().rawQuery("SELECT id,title,priority,due FROM tasks WHERE done=0",null);}
