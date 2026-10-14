@@ -7,6 +7,7 @@ public class ReminderReceiver extends BroadcastReceiver {
  public static final int[] DEFAULT_MINUTES={240,60,15,5};
  public static int interval(Context c,int priority){return c.getSharedPreferences("adaptask_settings",Context.MODE_PRIVATE).getInt("interval_"+priority,DEFAULT_MINUTES[Math.max(0,Math.min(3,priority))]);}
  static PendingIntent alarmIntent(Context c,long id,long when,int flags){Intent intent=new Intent(c,ReminderReceiver.class).putExtra("task_id",id).putExtra("expected",when);return PendingIntent.getBroadcast(c,(int)id,intent,flags|PendingIntent.FLAG_IMMUTABLE);}
+ public static int effectiveInterval(Context c,TaskStore store,long id){int override=store.reminderMinutes(id);return override>0?override:interval(c,store.priority(id));}
  public static void schedule(Context c,long id,long when){new TaskStore(c).setNextAlarm(id,when);arm(c,id,when);}
  static void arm(Context c,long id,long when){
   AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);
@@ -24,7 +25,7 @@ public class ReminderReceiver extends BroadcastReceiver {
  static void channel(NotificationManager nm){if(Build.VERSION.SDK_INT>=26)nm.createNotificationChannel(new NotificationChannel(CHANNEL,"Rappels Adaptask",NotificationManager.IMPORTANCE_HIGH));}
  @Override public void onReceive(Context c,Intent i){
   long id=i.getLongExtra("task_id",-1),expected=i.getLongExtra("expected",-1);if(id<0||expected<=0)return;
-  TaskStore store=new TaskStore(c);long next=System.currentTimeMillis()+Math.max(1,interval(c,store.priority(id)))*60_000L;
+  TaskStore store=new TaskStore(c);long next=System.currentTimeMillis()+Math.max(1,effectiveInterval(c,store,id))*60_000L;
   if(!store.claimAlarm(id,expected,next))return;
   arm(c,id,next);
   NotificationManager nm=(NotificationManager)c.getSystemService(Context.NOTIFICATION_SERVICE);channel(nm);
