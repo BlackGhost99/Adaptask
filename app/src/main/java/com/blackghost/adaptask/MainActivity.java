@@ -11,6 +11,8 @@ import java.util.*;
 public class MainActivity extends Activity {
  TaskStore store; EditText title,category; Spinner priority; Button dateButton; long due;
  int statusFilter=0,priorityFilter=0;
+ String searchQuery="";
+ LinearLayout taskList;
  final String[] levels={"Faible","Normale","Urgente","Critique"};
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density);}
  @Override public void onCreate(Bundle b){super.onCreate(b);store=new TaskStore(this);due=System.currentTimeMillis()+3600000L;
@@ -110,14 +112,28 @@ public class MainActivity extends Activity {
     if(priorityFilter!=position){priorityFilter=position;render();}
    }
   });
+  EditText search=new EditText(this);search.setSingleLine(true);search.setHint("Rechercher titre ou catégorie");search.setText(searchQuery);root.addView(search);
+  taskList=new LinearLayout(this);taskList.setOrientation(1);root.addView(taskList);
+  search.addTextChangedListener(new android.text.TextWatcher(){
+   public void beforeTextChanged(CharSequence text,int start,int count,int after){}
+   public void onTextChanged(CharSequence text,int start,int before,int count){searchQuery=text.toString();populateTasks();}
+   public void afterTextChanged(android.text.Editable text){}
+  });
+  populateTasks();
+ }
+ void populateTasks(){
+  if(taskList==null)return;
+  taskList.removeAllViews();
   int visibleCount=0;
   long filterNow=System.currentTimeMillis();
+  String query=searchQuery.trim().toLowerCase(Locale.ROOT);
   try(Cursor c=store.all()){while(c.moveToNext()){
    final long id=c.getLong(0);String name=c.getString(1),cat=c.getString(2);int p=c.getInt(3);long time=c.getLong(4);boolean done=c.getInt(5)==1;
    if(statusFilter==1&&done)continue;
    if(statusFilter==2&&(done||time>=filterNow))continue;
    if(statusFilter==3&&!done)continue;
    if(priorityFilter>0&&p!=priorityFilter-1)continue;
+   if(!query.isEmpty()&&!name.toLowerCase(Locale.ROOT).contains(query)&&!(cat==null?"":cat).toLowerCase(Locale.ROOT).contains(query))continue;
    visibleCount++;
    LinearLayout item=new LinearLayout(this);item.setOrientation(1);item.setPadding(dp(10),dp(10),dp(10),dp(10));
    TextView text=label((done?"✓ ":"● ")+name+"\n"+cat+" · "+date(time)+" · "+levels[p],16);item.addView(text);
@@ -129,8 +145,8 @@ public class MainActivity extends Activity {
    }
    Button delete=new Button(this);delete.setText("Supprimer");
    delete.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Supprimer cette tâche ?").setMessage(name).setNegativeButton("Annuler",null).setPositiveButton("Supprimer",(dialog,which)->{ReminderReceiver.cancel(this,id);store.delete(id);render();}).show());
-   item.addView(delete);root.addView(item);
+   item.addView(delete);taskList.addView(item);
   }}
-  if(visibleCount==0)root.addView(label("Aucune tâche ne correspond aux filtres.",15));
+  if(visibleCount==0)taskList.addView(label("Aucune tâche ne correspond à la recherche et aux filtres.",15));
  }
 }
