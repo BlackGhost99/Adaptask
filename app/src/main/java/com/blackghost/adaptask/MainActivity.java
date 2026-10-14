@@ -13,7 +13,7 @@ import java.util.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 public class MainActivity extends Activity {
- TaskStore store; EditText title,category; Spinner priority,recurrence; Button dateButton; long due;
+ TaskStore store; EditText title,category; Spinner priority,recurrence,taskType;EditText description; Button dateButton; long due;
  int statusFilter=0,priorityFilter=0;long activeSpace=1;
  final int SKY=Color.rgb(229,244,255),BLUE=Color.rgb(22,139,246),INK=Color.rgb(24,43,74);
  String searchQuery="";
@@ -50,6 +50,7 @@ public class MainActivity extends Activity {
  @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(result!=RESULT_OK||data==null||data.getData()==null)return;
   final android.net.Uri uri=data.getData();
   if(request==501){try(OutputStream out=getContentResolver().openOutputStream(uri)){if(out==null)throw new IOException("Fichier inaccessible");out.write(BackupManager.exportData(this,store).getBytes(StandardCharsets.UTF_8));Toast.makeText(this,"Sauvegarde enregistrée",Toast.LENGTH_LONG).show();}catch(Exception e){new AlertDialog.Builder(this).setTitle("Échec de sauvegarde").setMessage(e.getMessage()).setPositiveButton("OK",null).show();}}
+  if(request==503){try{exportReport(uri);Toast.makeText(this,"Rapport CSV exporté",Toast.LENGTH_LONG).show();}catch(Exception e){Toast.makeText(this,"Export impossible : "+e.getMessage(),Toast.LENGTH_LONG).show();}}
   if(request==502){new AlertDialog.Builder(this).setTitle("Restaurer les données ?").setMessage("Cette opération remplacera TOUTES les tâches, espaces et catégories actuels par ceux du fichier. Fais d'abord une sauvegarde de tes données actuelles.").setNegativeButton("Annuler",null).setPositiveButton("Remplacer",(d,w)->restoreFile(uri)).show();}
  }
  void restoreFile(android.net.Uri uri){try{
@@ -60,11 +61,13 @@ public class MainActivity extends Activity {
   try(Cursor c=store.pending()){while(c.moveToNext()){long id=c.getLong(0),when=c.getLong(4);ReminderReceiver.schedule(this,id,Math.max(System.currentTimeMillis()+60000L,when>0?when:c.getLong(3)));}}
   activeSpace=1;render();Toast.makeText(this,"Restauration terminée",Toast.LENGTH_LONG).show();
  }catch(Exception e){new AlertDialog.Builder(this).setTitle("Restauration impossible").setMessage(e.getMessage()).setPositiveButton("OK",null).show();}}
- void editTask(long id,String oldTitle,String oldCategory,int oldPriority,long oldDue,int oldRepeat,int oldInterval,int oldDays,long oldSpace,int oldReminder){
+ void editTask(long id,String oldTitle,String oldCategory,int oldPriority,long oldDue,int oldRepeat,int oldInterval,int oldDays,long oldSpace,int oldReminder,int oldType,String oldDescription){
   final long[] chosenDue={oldDue};final long[] chosenSpace={oldSpace};final int[] chosenReminder={oldReminder};
   LinearLayout form=new LinearLayout(this);form.setOrientation(1);form.setPadding(dp(20),dp(8),dp(20),dp(8));
   EditText editTitle=new EditText(this);editTitle.setHint("Titre");editTitle.setText(oldTitle);form.addView(editTitle);
   Button editSpace=new Button(this);editSpace.setText("Espace : "+spaceName(oldSpace));form.addView(editSpace);editSpace.setOnClickListener(v->pickSpace(idSpace->{chosenSpace[0]=idSpace;editSpace.setText("Espace : "+spaceName(idSpace));}));
+  Spinner editType=new Spinner(this);editType.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Tâche habituelle","Incident"}));editType.setSelection(oldType);form.addView(editType);
+  EditText editDescription=new EditText(this);editDescription.setHint("Description / contexte de l'incident");editDescription.setText(oldDescription);editDescription.setMinLines(2);form.addView(editDescription);
   EditText editCategory=new EditText(this);editCategory.setHint("Catégorie");editCategory.setText(oldCategory);form.addView(editCategory);
   Spinner editPriority=new Spinner(this);editPriority.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,levels));editPriority.setSelection(oldPriority);form.addView(editPriority);
   Spinner editRepeat=new Spinner(this);editRepeat.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,repeats));editRepeat.setSelection(oldRepeat);form.addView(editRepeat);
@@ -79,7 +82,7 @@ public class MainActivity extends Activity {
    String newTitle=editTitle.getText().toString().trim();
    if(newTitle.isEmpty()){editTitle.setError("Titre obligatoire");return;}
    if(chosenDue[0]<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}
-   store.update(id,newTitle,editCategory.getText().toString().trim(),editPriority.getSelectedItemPosition(),chosenDue[0],editRepeat.getSelectedItemPosition(),ruleInterval[0],ruleDays[0],chosenSpace[0],chosenReminder[0]);
+   store.update(id,newTitle,editCategory.getText().toString().trim(),editPriority.getSelectedItemPosition(),chosenDue[0],editRepeat.getSelectedItemPosition(),ruleInterval[0],ruleDays[0],chosenSpace[0],chosenReminder[0],editType.getSelectedItemPosition(),editDescription.getText().toString().trim());
    ReminderReceiver.cancel(this,id);ReminderReceiver.schedule(this,id,chosenDue[0]);dialog.dismiss();render();
   }));
   dialog.show();
@@ -122,6 +125,22 @@ public class MainActivity extends Activity {
    else{EditText input=new EditText(this);input.setInputType(2);input.setHint("Minutes (1 à 10080)");new AlertDialog.Builder(this).setTitle("Intervalle personnalisé").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",(dialog,w)->{try{int minutes=Integer.parseInt(input.getText().toString().trim());if(minutes<1||minutes>10080){Toast.makeText(this,"Intervalle entre 1 et 10080 min",Toast.LENGTH_SHORT).show();return;}value[0]=minutes;display.setText(reminderDescription(minutes));saved.run();}catch(NumberFormatException ex){Toast.makeText(this,"Nombre invalide",Toast.LENGTH_SHORT).show();}}).show();}
   }).show();
  }
+ void showReports(){
+  int total=0,completed=0,late=0,incidents=0,open=0,resolved=0;long sumResolution=0;long now=System.currentTimeMillis();
+  try(Cursor c=store.reportRows(activeSpace)){while(c.moveToNext()){total++;boolean done=c.getInt(5)==1;int type=c.getInt(6);long due=c.getLong(4),created=c.getLong(8),closed=c.getLong(9);if(done)completed++;else if(due<now)late++;if(type==1){incidents++;if(done){resolved++;if(closed>created&&created>0)sumResolution+=closed-created;}else open++;}}}
+  long average=resolved==0?0:sumResolution/resolved/60000;
+  String summary="Espace : "+spaceName(activeSpace)+"\n\nTotal : "+total+"\nTerminées : "+completed+"\nEn retard : "+late+"\n\nIncidents : "+incidents+"\nOuverts : "+open+"\nRésolus : "+resolved+"\nTemps moyen de résolution (données disponibles) : "+average+" min";
+  new AlertDialog.Builder(this).setTitle("Rapports et statistiques").setMessage(summary).setNegativeButton("Fermer",null).setPositiveButton("Exporter CSV",(d,w)->{Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.setType("text/csv");i.addCategory(Intent.CATEGORY_OPENABLE);i.putExtra(Intent.EXTRA_TITLE,"adaptask-rapport.csv");startActivityForResult(i,503);}).show();
+ }
+ static String csv(String s){return "\"" +(s==null?"":s.replace("\"","\"\""))+"\"";}
+ void exportReport(android.net.Uri uri)throws Exception{
+  StringBuilder b=new StringBuilder("\uFEFFID;Type;Titre;Catégorie;Priorité;Échéance;Statut;Description;Création;Résolution;Durée résolution (minutes)\n");
+  try(Cursor c=store.reportRows(activeSpace)){while(c.moveToNext()){
+   long created=c.getLong(8),closed=c.getLong(9);String[] values={String.valueOf(c.getLong(0)),c.getInt(6)==1?"Incident":"Tâche",c.getString(1),c.getString(2),levels[c.getInt(3)],date(c.getLong(4)),c.getInt(5)==1?"Terminée":"Ouverte",c.getString(7),created>0?date(created):"",closed>0?date(closed):"",closed>created&&created>0?String.valueOf((closed-created)/60000):""};
+   for(int j=0;j<values.length;j++){if(j>0)b.append(';');b.append(csv(values[j]));}b.append('\n');
+  }}
+  try(OutputStream out=getContentResolver().openOutputStream(uri)){if(out==null)throw new IOException("Fichier inaccessible");out.write(b.toString().getBytes(StandardCharsets.UTF_8));}
+ }
  void dashboard(LinearLayout root){
   int[] counts=new int[4];long now=System.currentTimeMillis();Calendar cal=Calendar.getInstance();cal.setTimeInMillis(now);cal.set(Calendar.HOUR_OF_DAY,0);cal.set(Calendar.MINUTE,0);cal.set(Calendar.SECOND,0);cal.set(Calendar.MILLISECOND,0);long start=cal.getTimeInMillis();cal.add(Calendar.DAY_OF_MONTH,1);long end=cal.getTimeInMillis();
   try(Cursor c=store.all()){while(c.moveToNext()){boolean done=c.getInt(5)==1;long due=c.getLong(4);if(c.getLong(9)!=activeSpace)continue;if(done)counts[3]++;else{counts[0]++;if(due<now)counts[2]++;else if(due>=start&&due<end)counts[1]++;}}}
@@ -138,10 +157,12 @@ public class MainActivity extends Activity {
   TextView heading=text("Adaptask",27,BLUE,true);header.addView(heading,new LinearLayout.LayoutParams(0,dp(56),1));
   TextView searchIcon=text("⌕",27,BLUE,true);searchIcon.setPadding(dp(10),0,dp(15),0);header.addView(searchIcon);
   TextView settingsIcon=chip("⚙",false);settingsIcon.setTextColor(BLUE);settingsIcon.setOnClickListener(v->settings());header.addView(settingsIcon);spaced(root,header,13);
-  spaceBar(root);dashboard(root);
+  spaceBar(root);dashboard(root);TextView reportButton=chip("▥ Rapports et statistiques",false);spaced(root,reportButton,13);reportButton.setOnClickListener(v->showReports());
   LinearLayout form=panel();spaced(root,form,16);
   LinearLayout formHead=row();TextView formTitle=text("✚  Nouvelle tâche",19,INK,true);formHead.addView(formTitle,new LinearLayout.LayoutParams(0,dp(44),1));TextView idea=chip("☼",false);idea.setOnClickListener(v->settings());formHead.addView(idea);spaced(form,formHead,8);
   title=new EditText(this);title.setSingleLine(true);title.setTextSize(14);title.setHint("☷  Que devez-vous faire ?");title.setPadding(dp(12),dp(10),dp(12),dp(10));title.setBackground(shape(Color.rgb(245,249,254),13));spaced(form,title,9);
+  taskType=new Spinner(this);taskType.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Tâche habituelle","Incident"}));spaced(form,taskType,8);
+  description=new EditText(this);description.setHint("Description / contexte / impact (facultatif)");description.setMinLines(2);spaced(form,description,8);
   LinearLayout topFields=row();category=new EditText(this);category.setSingleLine(true);category.setTextSize(12);category.setHint("▱ Catégorie (ex : Travail)");category.setPadding(dp(8),dp(12),dp(8),dp(12));category.setBackground(shape(Color.rgb(245,249,254),12));topFields.addView(category,new LinearLayout.LayoutParams(0,dp(52),1));
   priority=new Spinner(this);priority.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,levels));priority.setSelection(1);priority.setBackground(shape(Color.rgb(245,249,254),12));LinearLayout.LayoutParams pl=new LinearLayout.LayoutParams(0,dp(52),1);pl.leftMargin=dp(8);topFields.addView(priority,pl);spaced(form,topFields,9);
   LinearLayout bottomFields=row();dateButton=new Button(this);dateButton.setText("▣  "+date(due));dateButton.setTextSize(11);dateButton.setAllCaps(false);dateButton.setTextColor(INK);dateButton.setBackground(shape(Color.rgb(245,249,254),12));dateButton.setOnClickListener(v->chooseDate());bottomFields.addView(dateButton,new LinearLayout.LayoutParams(0,dp(52),1));
@@ -149,7 +170,7 @@ public class MainActivity extends Activity {
   TextView ruleButton=chip("⚙ Configurer la répétition",false);spaced(form,ruleButton,10);ruleButton.setOnClickListener(v->{int[] interval={repeatInterval},days={repeatDays};configureRepeat(recurrence.getSelectedItemPosition(),interval,days,()->{repeatInterval=interval[0];repeatDays=days[0];});});
   TextView reminderControl=chip(reminderDescription(reminderOverride),false);spaced(form,reminderControl,10);reminderControl.setOnClickListener(v->{int[] value={reminderOverride};chooseReminder(value,reminderControl,()->reminderOverride=value[0]);});
   TextView add=chip("＋  Ajouter la tâche",true);add.setTextSize(15);spaced(form,add,0);
-  add.setOnClickListener(v->{String t=title.getText().toString().trim();if(t.isEmpty()){title.setError("Indique un titre");return;}if(due<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}long id=store.add(t,category.getText().toString().trim(),priority.getSelectedItemPosition(),due,recurrence.getSelectedItemPosition(),repeatInterval,repeatDays,activeSpace,reminderOverride);ReminderReceiver.schedule(this,id,due);render();});
+  add.setOnClickListener(v->{String t=title.getText().toString().trim();if(t.isEmpty()){title.setError("Indique un titre");return;}if(due<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}long id=store.add(t,category.getText().toString().trim(),priority.getSelectedItemPosition(),due,recurrence.getSelectedItemPosition(),repeatInterval,repeatDays,activeSpace,reminderOverride,taskType.getSelectedItemPosition(),description.getText().toString().trim());ReminderReceiver.schedule(this,id,due);render();});
   LinearLayout filters=panel();spaced(root,filters,14);
   EditText search=new EditText(this);search.setSingleLine(true);search.setTextSize(13);search.setHint("⌕  Rechercher une tâche ou une catégorie…");search.setText(searchQuery);search.setPadding(dp(10),dp(10),dp(10),dp(10));search.setBackground(shape(Color.rgb(243,247,253),14));spaced(filters,search,9);
   HorizontalScrollView statusScroll=new HorizontalScrollView(this);statusScroll.setHorizontalScrollBarEnabled(false);LinearLayout statusRow=row();String[] statuses={"☷ Toutes","◷ En attente","▣ Aujourd'hui","! En retard","✓ Terminées"};
@@ -166,7 +187,7 @@ public class MainActivity extends Activity {
  void populateTasks(){
   if(taskList==null)return;taskList.removeAllViews();int count=0;long now=System.currentTimeMillis();String q=searchQuery.trim().toLowerCase(Locale.ROOT);
   try(Cursor c=store.all()){while(c.moveToNext()){
-   final long id=c.getLong(0);String name=c.getString(1),cat=c.getString(2);int p=c.getInt(3);long time=c.getLong(4);boolean done=c.getInt(5)==1;int repeat=c.getInt(6),repeatEvery=c.getInt(7),repeatMask=c.getInt(8);long space=c.getLong(9);int customReminder=c.getInt(10);if(space!=activeSpace)continue;
+   final long id=c.getLong(0);String name=c.getString(1),cat=c.getString(2);int p=c.getInt(3);long time=c.getLong(4);boolean done=c.getInt(5)==1;int repeat=c.getInt(6),repeatEvery=c.getInt(7),repeatMask=c.getInt(8);long space=c.getLong(9);int customReminder=c.getInt(10),type=c.getInt(11);String details=c.getString(12);if(space!=activeSpace)continue;
    if(statusFilter==1&&done)continue;
    if(statusFilter==2&&(done||!new SimpleDateFormat("yyyyMMdd",Locale.getDefault()).format(new Date(time)).equals(new SimpleDateFormat("yyyyMMdd",Locale.getDefault()).format(new Date(now)))))continue;
    if(statusFilter==3&&(done||time>=now))continue;
@@ -175,9 +196,9 @@ public class MainActivity extends Activity {
    if(!q.isEmpty()&&!name.toLowerCase(Locale.ROOT).contains(q)&&!(cat==null?"":cat).toLowerCase(Locale.ROOT).contains(q))continue;
    count++;LinearLayout card=panel();LinearLayout line=row();TextView check=chip(done?"✓":"□",false);check.setTextSize(20);line.addView(check);if(!done)check.setOnClickListener(v->finishTask(id));
    LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setPadding(dp(9),0,0,0);
-   TextView heading=text(name,15,INK,true);content.addView(heading);TextView meta=text((cat==null?"":cat)+"  ▣ "+date(time)+"  · "+levels[p]+(repeat==0?"":" ↻")+(customReminder>0?" · "+customReminder+" min":""),11,p==3?Color.RED:p==2?Color.rgb(225,104,21):BLUE,false);content.addView(meta);
+   TextView heading=text((type==1?"⚠ Incident · ":"")+name,15,INK,true);content.addView(heading);TextView meta=text((cat==null?"":cat)+"  ▣ "+date(time)+"  · "+levels[p]+(repeat==0?"":" ↻")+(customReminder>0?" · "+customReminder+" min":""),11,p==3?Color.RED:p==2?Color.rgb(225,104,21):BLUE,false);content.addView(meta);if(type==1&&!details.isEmpty())content.addView(text(details,12,INK,false));
    line.addView(content,new LinearLayout.LayoutParams(0,-2,1));
-   TextView more=chip("⋮",false);more.setTextSize(21);line.addView(more);more.setOnClickListener(v->{PopupMenu popup=new PopupMenu(this,more);popup.getMenu().add("Modifier");popup.getMenu().add("Déplacer");if(!done){popup.getMenu().add("Reporter 10 min");popup.getMenu().add("Terminer");}popup.getMenu().add("Supprimer");popup.setOnMenuItemClickListener(m->{String choice=m.getTitle().toString();if(choice.equals("Déplacer"))pickSpace(selected->{store.moveTask(id,selected);render();});else if(choice.equals("Modifier"))editTask(id,name,cat,p,time,repeat,repeatEvery,repeatMask,space,customReminder);else if(choice.equals("Reporter 10 min")){ReminderReceiver.cancel(this,id);ReminderReceiver.schedule(this,id,System.currentTimeMillis()+600000L);Toast.makeText(this,"Rappel reporté",Toast.LENGTH_SHORT).show();}else if(choice.equals("Terminer"))finishTask(id);else if(choice.equals("Supprimer"))new AlertDialog.Builder(this).setTitle("Supprimer cette tâche ?").setMessage(name).setNegativeButton("Annuler",null).setPositiveButton("Supprimer",(d,w)->{ReminderReceiver.cancel(this,id);store.delete(id);render();}).show();return true;});popup.show();});
+   TextView more=chip("⋮",false);more.setTextSize(21);line.addView(more);more.setOnClickListener(v->{PopupMenu popup=new PopupMenu(this,more);popup.getMenu().add("Modifier");popup.getMenu().add("Déplacer");if(!done){popup.getMenu().add("Reporter 10 min");popup.getMenu().add("Terminer");}popup.getMenu().add("Supprimer");popup.setOnMenuItemClickListener(m->{String choice=m.getTitle().toString();if(choice.equals("Déplacer"))pickSpace(selected->{store.moveTask(id,selected);render();});else if(choice.equals("Modifier"))editTask(id,name,cat,p,time,repeat,repeatEvery,repeatMask,space,customReminder,type,details);else if(choice.equals("Reporter 10 min")){ReminderReceiver.cancel(this,id);ReminderReceiver.schedule(this,id,System.currentTimeMillis()+600000L);Toast.makeText(this,"Rappel reporté",Toast.LENGTH_SHORT).show();}else if(choice.equals("Terminer"))finishTask(id);else if(choice.equals("Supprimer"))new AlertDialog.Builder(this).setTitle("Supprimer cette tâche ?").setMessage(name).setNegativeButton("Annuler",null).setPositiveButton("Supprimer",(d,w)->{ReminderReceiver.cancel(this,id);store.delete(id);render();}).show();return true;});popup.show();});
    card.addView(line);spaced(taskList,card,9);
   }}
   if(count==0)taskList.addView(label("Aucune tâche ne correspond à votre recherche.",14));
