@@ -21,6 +21,7 @@ public class MainActivity extends Activity {
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density);}
  @Override public void onCreate(Bundle b){super.onCreate(b);store=new TaskStore(this);due=System.currentTimeMillis()+3600000L;
   if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},1);
+  try(Cursor pending=store.pending()){while(pending.moveToNext()){long id=pending.getLong(0);long when=pending.getLong(4);if(when<=0||when<System.currentTimeMillis())ReminderReceiver.schedule(this,id,System.currentTimeMillis()+60_000L);else ReminderReceiver.arm(this,id,when);}}
   render();
  }
  String date(long d){return new SimpleDateFormat("dd/MM/yyyy HH:mm",Locale.getDefault()).format(new Date(d));}
