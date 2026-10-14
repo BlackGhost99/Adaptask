@@ -10,6 +10,8 @@ import android.view.*;
 import android.widget.*;
 import java.text.*;
 import java.util.*;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 public class MainActivity extends Activity {
  TaskStore store; EditText title,category; Spinner priority,recurrence; Button dateButton; long due;
  int statusFilter=0,priorityFilter=0;long activeSpace=1;
@@ -34,6 +36,8 @@ public class MainActivity extends Activity {
  void settings(){
   LinearLayout form=new LinearLayout(this);form.setOrientation(1);form.setPadding(dp(20),dp(8),dp(20),dp(8));
   EditText[] values=new EditText[4];
+  Button backup=new Button(this);backup.setText("Exporter une sauvegarde JSON");form.addView(backup);backup.setOnClickListener(v->startBackup());
+  Button restore=new Button(this);restore.setText("Restaurer une sauvegarde JSON");form.addView(restore);restore.setOnClickListener(v->startRestore());
   for(int p=0;p<4;p++){form.addView(label(levels[p]+" — intervalle (minutes)",16));values[p]=new EditText(this);values[p].setInputType(2);values[p].setSingleLine(true);values[p].setText(String.valueOf(ReminderReceiver.interval(this,p)));form.addView(values[p]);}
   new AlertDialog.Builder(this).setTitle("Personnaliser les rappels").setView(form).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",(d,w)->{
    android.content.SharedPreferences.Editor editor=getSharedPreferences("adaptask_settings",MODE_PRIVATE).edit();
@@ -41,6 +45,21 @@ public class MainActivity extends Activity {
    editor.apply();render();Toast.makeText(this,"Intervalles enregistrés",Toast.LENGTH_SHORT).show();
   }).show();
  }
+ void startBackup(){Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.setType("application/json");i.addCategory(Intent.CATEGORY_OPENABLE);i.putExtra(Intent.EXTRA_TITLE,"adaptask-sauvegarde.json");startActivityForResult(i,501);}
+ void startRestore(){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("*/*");i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,502);}
+ @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(result!=RESULT_OK||data==null||data.getData()==null)return;
+  final android.net.Uri uri=data.getData();
+  if(request==501){try(OutputStream out=getContentResolver().openOutputStream(uri)){if(out==null)throw new IOException("Fichier inaccessible");out.write(BackupManager.exportData(this,store).getBytes(StandardCharsets.UTF_8));Toast.makeText(this,"Sauvegarde enregistrée",Toast.LENGTH_LONG).show();}catch(Exception e){new AlertDialog.Builder(this).setTitle("Échec de sauvegarde").setMessage(e.getMessage()).setPositiveButton("OK",null).show();}}
+  if(request==502){new AlertDialog.Builder(this).setTitle("Restaurer les données ?").setMessage("Cette opération remplacera TOUTES les tâches, espaces et catégories actuels par ceux du fichier. Fais d'abord une sauvegarde de tes données actuelles.").setNegativeButton("Annuler",null).setPositiveButton("Remplacer",(d,w)->restoreFile(uri)).show();}
+ }
+ void restoreFile(android.net.Uri uri){try{
+  ByteArrayOutputStream bytes=new ByteArrayOutputStream();try(InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new IOException("Fichier inaccessible");byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){if(bytes.size()+n>20*1024*1024)throw new IOException("Fichier supérieur à 20 Mo");bytes.write(buffer,0,n);}}
+  ArrayList<Long> previous=new ArrayList<>();try(Cursor c=store.pending()){while(c.moveToNext())previous.add(c.getLong(0));}
+  BackupManager.restoreData(this,store,new String(bytes.toByteArray(),StandardCharsets.UTF_8));
+  for(long id:previous)ReminderReceiver.cancel(this,id);
+  try(Cursor c=store.pending()){while(c.moveToNext()){long id=c.getLong(0),when=c.getLong(4);ReminderReceiver.schedule(this,id,Math.max(System.currentTimeMillis()+60000L,when>0?when:c.getLong(3)));}}
+  activeSpace=1;render();Toast.makeText(this,"Restauration terminée",Toast.LENGTH_LONG).show();
+ }catch(Exception e){new AlertDialog.Builder(this).setTitle("Restauration impossible").setMessage(e.getMessage()).setPositiveButton("OK",null).show();}}
  void editTask(long id,String oldTitle,String oldCategory,int oldPriority,long oldDue,int oldRepeat,int oldInterval,int oldDays,long oldSpace,int oldReminder){
   final long[] chosenDue={oldDue};final long[] chosenSpace={oldSpace};final int[] chosenReminder={oldReminder};
   LinearLayout form=new LinearLayout(this);form.setOrientation(1);form.setPadding(dp(20),dp(8),dp(20),dp(8));
