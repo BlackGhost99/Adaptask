@@ -81,10 +81,10 @@ public class MainActivity extends Activity {
   dialog.setOnShowListener(v->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b->{
    String newTitle=editTitle.getText().toString().trim();
    if(newTitle.isEmpty()){editTitle.setError("Titre obligatoire");return;}
-   if(chosenDue[0]<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}
+   if(chosenDue[0]<=System.currentTimeMillis() && store.isPending(id)){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}
    if(editType.getSelectedItemPosition()==1&&editRepeat.getSelectedItemPosition()!=0){Toast.makeText(this,"Un incident ne peut pas être récurrent",Toast.LENGTH_LONG).show();return;}
    store.update(id,newTitle,editCategory.getText().toString().trim(),editPriority.getSelectedItemPosition(),chosenDue[0],editRepeat.getSelectedItemPosition(),ruleInterval[0],ruleDays[0],chosenSpace[0],chosenReminder[0],editType.getSelectedItemPosition(),editDescription.getText().toString().trim());
-   ReminderReceiver.cancel(this,id);ReminderReceiver.schedule(this,id,chosenDue[0]);dialog.dismiss();render();
+   ReminderReceiver.cancel(this,id);if(store.isPending(id))ReminderReceiver.schedule(this,id,chosenDue[0]);dialog.dismiss();render();
   }));
   dialog.show();
  }
