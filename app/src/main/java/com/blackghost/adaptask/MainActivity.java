@@ -28,6 +28,26 @@ public class MainActivity extends Activity {
    editor.apply();render();Toast.makeText(this,"Intervalles enregistrés",Toast.LENGTH_SHORT).show();
   }).show();
  }
+ void editTask(long id,String oldTitle,String oldCategory,int oldPriority,long oldDue){
+  final long[] chosenDue={oldDue};
+  LinearLayout form=new LinearLayout(this);form.setOrientation(1);form.setPadding(dp(20),dp(8),dp(20),dp(8));
+  EditText editTitle=new EditText(this);editTitle.setHint("Titre");editTitle.setText(oldTitle);form.addView(editTitle);
+  EditText editCategory=new EditText(this);editCategory.setHint("Catégorie");editCategory.setText(oldCategory);form.addView(editCategory);
+  Spinner editPriority=new Spinner(this);editPriority.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,levels));editPriority.setSelection(oldPriority);form.addView(editPriority);
+  Button editDate=new Button(this);editDate.setText("Échéance : "+date(chosenDue[0]));form.addView(editDate);
+  editDate.setOnClickListener(v->{Calendar cal=Calendar.getInstance();cal.setTimeInMillis(chosenDue[0]);new DatePickerDialog(this,(view,y,m,d)->{
+   new TimePickerDialog(this,(tv,h,min)->{Calendar x=Calendar.getInstance();x.set(y,m,d,h,min,0);chosenDue[0]=x.getTimeInMillis();editDate.setText("Échéance : "+date(chosenDue[0]));},cal.get(Calendar.HOUR_OF_DAY),cal.get(Calendar.MINUTE),true).show();
+  },cal.get(Calendar.YEAR),cal.get(Calendar.MONTH),cal.get(Calendar.DAY_OF_MONTH)).show();});
+  AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Modifier la tâche").setView(form).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",null).create();
+  dialog.setOnShowListener(v->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b->{
+   String newTitle=editTitle.getText().toString().trim();
+   if(newTitle.isEmpty()){editTitle.setError("Titre obligatoire");return;}
+   if(chosenDue[0]<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}
+   store.update(id,newTitle,editCategory.getText().toString().trim(),editPriority.getSelectedItemPosition(),chosenDue[0]);
+   ReminderReceiver.cancel(this,id);ReminderReceiver.schedule(this,id,chosenDue[0]);dialog.dismiss();render();
+  }));
+  dialog.show();
+ }
  void render(){
   ScrollView scroll=new ScrollView(this);LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(18),dp(22),dp(18),dp(22));scroll.addView(root);setContentView(scroll);
   TextView heading=label("Adaptask",28);heading.setTextColor(Color.rgb(29,64,112));root.addView(heading);
@@ -48,10 +68,13 @@ public class MainActivity extends Activity {
    TextView text=label((done?"✓ ":"● ")+name+"\n"+cat+" · "+date(time)+" · "+levels[p],16);item.addView(text);
    if(!done){
     LinearLayout actions=new LinearLayout(this);actions.setOrientation(LinearLayout.HORIZONTAL);
+    Button edit=new Button(this);edit.setText("Modifier");edit.setOnClickListener(v->editTask(id,name,cat,p,time));actions.addView(edit,new LinearLayout.LayoutParams(0,-2,1));
     Button snooze=new Button(this);snooze.setText("Reporter 10 min");snooze.setOnClickListener(v->{ReminderReceiver.schedule(this,id,System.currentTimeMillis()+600000L);Toast.makeText(this,"Rappel reporté de 10 min",Toast.LENGTH_SHORT).show();});actions.addView(snooze,new LinearLayout.LayoutParams(0,-2,1));
     Button finish=new Button(this);finish.setText("Terminer");finish.setOnClickListener(v->{store.done(id);ReminderReceiver.cancel(this,id);render();});actions.addView(finish,new LinearLayout.LayoutParams(0,-2,1));item.addView(actions);
    }
-   root.addView(item);
+   Button delete=new Button(this);delete.setText("Supprimer");
+   delete.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Supprimer cette tâche ?").setMessage(name).setNegativeButton("Annuler",null).setPositiveButton("Supprimer",(dialog,which)->{ReminderReceiver.cancel(this,id);store.delete(id);render();}).show());
+   item.addView(delete);root.addView(item);
   }}
  }
 }
