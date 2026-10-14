@@ -82,6 +82,7 @@ public class MainActivity extends Activity {
    String newTitle=editTitle.getText().toString().trim();
    if(newTitle.isEmpty()){editTitle.setError("Titre obligatoire");return;}
    if(chosenDue[0]<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}
+   if(editType.getSelectedItemPosition()==1&&editRepeat.getSelectedItemPosition()!=0){Toast.makeText(this,"Un incident ne peut pas être récurrent",Toast.LENGTH_LONG).show();return;}
    store.update(id,newTitle,editCategory.getText().toString().trim(),editPriority.getSelectedItemPosition(),chosenDue[0],editRepeat.getSelectedItemPosition(),ruleInterval[0],ruleDays[0],chosenSpace[0],chosenReminder[0],editType.getSelectedItemPosition(),editDescription.getText().toString().trim());
    ReminderReceiver.cancel(this,id);ReminderReceiver.schedule(this,id,chosenDue[0]);dialog.dismiss();render();
   }));
@@ -115,7 +116,7 @@ public class MainActivity extends Activity {
    else{long id=ids.get(which-1);String old=names.get(which-1);EditText input=new EditText(this);input.setText(old);new AlertDialog.Builder(this).setTitle("Renommer la catégorie").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",(dialog,w)->{String name=input.getText().toString().trim();if(!name.isEmpty()){try{store.renameCategory(id,activeSpace,old,name);render();}catch(Exception ex){Toast.makeText(this,"Catégorie déjà existante",Toast.LENGTH_SHORT).show();}}}).show();}
   }).setNegativeButton("Fermer",null).show();
  }
- String reminderDescription(int minutes){return minutes<=0?"♬ Rappels : selon la priorité":"♬ Rappels : toutes les "+minutes+" min";}
+ String reminderDescription(int minutes){return minutes<=0?"♬ Rappels : selon la priorité":"♬ Rappels : toutes les "+minutes+" min ("+measured+" incidents mesurés)\nRépartition incidents : faible "+incidentPriorities[0]+", normale "+incidentPriorities[1]+", urgente "+incidentPriorities[2]+", critique "+incidentPriorities[3];}
  void chooseReminder(int[] value,TextView display){chooseReminder(value,display,()->{});}
  void chooseReminder(int[] value,TextView display,Runnable saved){
   String[] choices={"Selon la priorité (défaut)","Toutes les 1 min","Toutes les 5 min","Toutes les 10 min","Toutes les 15 min","Toutes les 30 min","Toutes les 60 min","Personnaliser…"};
@@ -126,9 +127,9 @@ public class MainActivity extends Activity {
   }).show();
  }
  void showReports(){
-  int total=0,completed=0,late=0,incidents=0,open=0,resolved=0;long sumResolution=0;long now=System.currentTimeMillis();
-  try(Cursor c=store.reportRows(activeSpace)){while(c.moveToNext()){total++;boolean done=c.getInt(5)==1;int type=c.getInt(6);long due=c.getLong(4),created=c.getLong(8),closed=c.getLong(9);if(done)completed++;else if(due<now)late++;if(type==1){incidents++;if(done){resolved++;if(closed>created&&created>0)sumResolution+=closed-created;}else open++;}}}
-  long average=resolved==0?0:sumResolution/resolved/60000;
+  int total=0,completed=0,late=0,incidents=0,open=0,resolved=0,measured=0;int[] incidentPriorities=new int[4];long sumResolution=0;long now=System.currentTimeMillis();
+  try(Cursor c=store.reportRows(activeSpace)){while(c.moveToNext()){total++;boolean done=c.getInt(5)==1;int type=c.getInt(6);long due=c.getLong(4),created=c.getLong(8),closed=c.getLong(9);if(done)completed++;else if(due<now)late++;if(type==1){incidents++;incidentPriorities[c.getInt(3)]++;if(done){resolved++;if(closed>created&&created>0){sumResolution+=closed-created;measured++;}}else open++;}}}
+  long average=measured==0?0:sumResolution/measured/60000;
   String summary="Espace : "+spaceName(activeSpace)+"\n\nTotal : "+total+"\nTerminées : "+completed+"\nEn retard : "+late+"\n\nIncidents : "+incidents+"\nOuverts : "+open+"\nRésolus : "+resolved+"\nTemps moyen de résolution (données disponibles) : "+average+" min";
   new AlertDialog.Builder(this).setTitle("Rapports et statistiques").setMessage(summary).setNegativeButton("Fermer",null).setPositiveButton("Exporter CSV",(d,w)->{Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.setType("text/csv");i.addCategory(Intent.CATEGORY_OPENABLE);i.putExtra(Intent.EXTRA_TITLE,"adaptask-rapport.csv");startActivityForResult(i,503);}).show();
  }
@@ -170,7 +171,7 @@ public class MainActivity extends Activity {
   TextView ruleButton=chip("⚙ Configurer la répétition",false);spaced(form,ruleButton,10);ruleButton.setOnClickListener(v->{int[] interval={repeatInterval},days={repeatDays};configureRepeat(recurrence.getSelectedItemPosition(),interval,days,()->{repeatInterval=interval[0];repeatDays=days[0];});});
   TextView reminderControl=chip(reminderDescription(reminderOverride),false);spaced(form,reminderControl,10);reminderControl.setOnClickListener(v->{int[] value={reminderOverride};chooseReminder(value,reminderControl,()->reminderOverride=value[0]);});
   TextView add=chip("＋  Ajouter la tâche",true);add.setTextSize(15);spaced(form,add,0);
-  add.setOnClickListener(v->{String t=title.getText().toString().trim();if(t.isEmpty()){title.setError("Indique un titre");return;}if(due<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}long id=store.add(t,category.getText().toString().trim(),priority.getSelectedItemPosition(),due,recurrence.getSelectedItemPosition(),repeatInterval,repeatDays,activeSpace,reminderOverride,taskType.getSelectedItemPosition(),description.getText().toString().trim());ReminderReceiver.schedule(this,id,due);render();});
+  add.setOnClickListener(v->{String t=title.getText().toString().trim();if(t.isEmpty()){title.setError("Indique un titre");return;}if(due<=System.currentTimeMillis()){Toast.makeText(this,"Choisis une échéance future",Toast.LENGTH_SHORT).show();return;}if(taskType.getSelectedItemPosition()==1&&recurrence.getSelectedItemPosition()!=0){Toast.makeText(this,"Un incident ne peut pas être récurrent",Toast.LENGTH_LONG).show();return;}long id=store.add(t,category.getText().toString().trim(),priority.getSelectedItemPosition(),due,recurrence.getSelectedItemPosition(),repeatInterval,repeatDays,activeSpace,reminderOverride,taskType.getSelectedItemPosition(),description.getText().toString().trim());ReminderReceiver.schedule(this,id,due);render();});
   LinearLayout filters=panel();spaced(root,filters,14);
   EditText search=new EditText(this);search.setSingleLine(true);search.setTextSize(13);search.setHint("⌕  Rechercher une tâche ou une catégorie…");search.setText(searchQuery);search.setPadding(dp(10),dp(10),dp(10),dp(10));search.setBackground(shape(Color.rgb(243,247,253),14));spaced(filters,search,9);
   HorizontalScrollView statusScroll=new HorizontalScrollView(this);statusScroll.setHorizontalScrollBarEnabled(false);LinearLayout statusRow=row();String[] statuses={"☷ Toutes","◷ En attente","▣ Aujourd'hui","! En retard","✓ Terminées"};
