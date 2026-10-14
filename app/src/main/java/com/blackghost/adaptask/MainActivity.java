@@ -116,7 +116,7 @@ public class MainActivity extends Activity {
    else{long id=ids.get(which-1);String old=names.get(which-1);EditText input=new EditText(this);input.setText(old);new AlertDialog.Builder(this).setTitle("Renommer la catégorie").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",(dialog,w)->{String name=input.getText().toString().trim();if(!name.isEmpty()){try{store.renameCategory(id,activeSpace,old,name);render();}catch(Exception ex){Toast.makeText(this,"Catégorie déjà existante",Toast.LENGTH_SHORT).show();}}}).show();}
   }).setNegativeButton("Fermer",null).show();
  }
- String reminderDescription(int minutes){return minutes<=0?"♬ Rappels : selon la priorité":"♬ Rappels : toutes les "+minutes+" min ("+measured+" incidents mesurés)\nRépartition incidents : faible "+incidentPriorities[0]+", normale "+incidentPriorities[1]+", urgente "+incidentPriorities[2]+", critique "+incidentPriorities[3];}
+ String reminderDescription(int minutes){return minutes<=0?"♬ Rappels : selon la priorité":"♬ Rappels : toutes les "+minutes+" min";}
  void chooseReminder(int[] value,TextView display){chooseReminder(value,display,()->{});}
  void chooseReminder(int[] value,TextView display,Runnable saved){
   String[] choices={"Selon la priorité (défaut)","Toutes les 1 min","Toutes les 5 min","Toutes les 10 min","Toutes les 15 min","Toutes les 30 min","Toutes les 60 min","Personnaliser…"};
