@@ -8,11 +8,15 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.*;
 import android.widget.*;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import java.text.*;
 import java.util.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 public class MainActivity extends Activity {
+ SpeechRecognizer voiceRecognizer; EditText voiceTarget; String voiceLanguage="fr-FR";
  TaskStore store; EditText title,category; Spinner priority,recurrence,taskType;EditText description; Button dateButton; long due;
  int statusFilter=0,priorityFilter=0;long activeSpace=1;
  final int SKY=Color.rgb(229,244,255),BLUE=Color.rgb(22,139,246),INK=Color.rgb(24,43,74);
@@ -152,10 +156,54 @@ public class MainActivity extends Activity {
   spaced(root,stats,16);
  }
  void chooseDate(){Calendar cal=Calendar.getInstance();cal.setTimeInMillis(due);new DatePickerDialog(this,(view,y,m,d)->new TimePickerDialog(this,(tv,h,min)->{Calendar x=Calendar.getInstance();x.set(y,m,d,h,min,0);due=x.getTimeInMillis();dateButton.setText("▣  "+date(due));},cal.get(Calendar.HOUR_OF_DAY),cal.get(Calendar.MINUTE),true).show(),cal.get(Calendar.YEAR),cal.get(Calendar.MONTH),cal.get(Calendar.DAY_OF_MONTH)).show();}
+ void startLocalDictation(EditText target,String lang){
+  voiceTarget=target;voiceLanguage=lang;
+  if(Build.VERSION.SDK_INT<31||!SpeechRecognizer.isOnDeviceRecognitionAvailable(this)){
+   new AlertDialog.Builder(this).setTitle("Voix locale indisponible / Offline speech unavailable")
+    .setMessage("Le téléphone ne dispose pas actuellement d'un moteur vocal local compatible. Utilise la saisie texte. Aucun enregistrement ne sera envoyé sur Internet. / Please use text input; no audio will be uploaded.")
+    .setPositiveButton("OK",null).show();return;
+  }
+  if(checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+   requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO},52);return;
+  }
+  if(voiceRecognizer!=null){voiceRecognizer.destroy();voiceRecognizer=null;}
+  try{
+   voiceRecognizer=SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
+   voiceRecognizer.setRecognitionListener(new RecognitionListener(){
+    public void onReadyForSpeech(Bundle params){Toast.makeText(MainActivity.this,"Parlez / Speak",Toast.LENGTH_SHORT).show();}
+    public void onBeginningOfSpeech(){}
+    public void onRmsChanged(float rmsdB){}
+    public void onBufferReceived(byte[] buffer){}
+    public void onEndOfSpeech(){}
+    public void onError(int error){Toast.makeText(MainActivity.this,"Dictée locale indisponible (code "+error+"). Saisie manuelle possible.",Toast.LENGTH_LONG).show();}
+    public void onResults(Bundle results){
+     ArrayList<String> phrases=results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+     if(phrases!=null&&!phrases.isEmpty()&&voiceTarget!=null)voiceTarget.setText(phrases.get(0));
+    }
+    public void onPartialResults(Bundle partialResults){}
+    public void onEvent(int eventType,Bundle params){}
+   });
+   Intent intent=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+   intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+   intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE,lang);
+   intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE,true);
+   voiceRecognizer.startListening(intent);
+  }catch(Exception ex){Toast.makeText(this,"Reconnaissance locale indisponible / Offline recognition unavailable",Toast.LENGTH_LONG).show();}
+ }
+ @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults){
+  super.onRequestPermissionsResult(requestCode,permissions,grantResults);
+  if(requestCode==52&&grantResults.length>0&&grantResults[0]==android.content.pm.PackageManager.PERMISSION_GRANTED&&voiceTarget!=null)startLocalDictation(voiceTarget,voiceLanguage);
+ }
+ @Override protected void onDestroy(){
+  if(voiceRecognizer!=null){voiceRecognizer.destroy();voiceRecognizer=null;}
+  super.onDestroy();
+ }
  void assistantDialog(){
   LinearLayout layout=new LinearLayout(this);layout.setOrientation(1);layout.setPadding(dp(18),dp(12),dp(18),dp(12));
   Spinner language=new Spinner(this);language.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Français","English"}));layout.addView(language);
   EditText command=new EditText(this);command.setMinLines(3);command.setHint("Ex : Incident climatisation en panne, priorité urgente, dans 30 minutes. / Create task check network in 2 hours.");layout.addView(command);
+  Button microphone=new Button(this);microphone.setText("🎙 Dicter hors ligne / Offline voice");layout.addView(microphone);
+  microphone.setOnClickListener(v->startLocalDictation(command,language.getSelectedItemPosition()==1?"en-US":"fr-FR"));
   new AlertDialog.Builder(this).setTitle("Adaptask Assistant · hors ligne / offline").setView(layout).setNegativeButton("Annuler",null).setPositiveButton("Analyser / Parse",(dialog,which)->{
    if(command.getText().toString().trim().isEmpty())return;
    AdaptaskAssistant.Draft draft=AdaptaskAssistant.parse(command.getText().toString(),language.getSelectedItemPosition()==1?"en":"fr");
