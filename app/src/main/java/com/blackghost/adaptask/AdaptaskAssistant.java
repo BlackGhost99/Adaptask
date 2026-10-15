@@ -54,5 +54,16 @@ public final class AdaptaskAssistant {
   d.description=spoken.trim();
   return d;
  }
+ public static String suggestion(String input,String lang){
+  boolean en="en".equals(lang);String t=normalized(input==null?"":input);
+  if(t.trim().isEmpty())return en?"Try: Create an incident, check the network...":"Essayez : Crée un incident, vérifier le réseau...";
+  if(!has(t,"\\b(urgent|urgente|critique|critical|normal|normale|faible|priority|priorite)\\b"))
+   return en?"Suggestion: add 'urgent priority' or 'normal priority'":"Suggestion : ajoutez « priorité urgente » ou « priorité normale »";
+  if(!has(t,"\\b(dans|in|demain|tomorrow|aujourd|today|minutes?|heures?|hours?|jours?|days?)\\b"))
+   return en?"Suggestion: add 'in 30 minutes' or 'tomorrow'":"Suggestion : ajoutez « dans 30 minutes » ou « demain »";
+  if(!has(t,"\\b(categorie|category)\\b"))
+   return en?"Suggestion: add 'category maintenance'":"Suggestion : ajoutez « catégorie maintenance »";
+  return en?"Ready for review. You can add more details.":"Prêt à vérifier. Vous pouvez ajouter des détails.";
+ }
  private AdaptaskAssistant(){}
 }
