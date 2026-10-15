@@ -152,6 +152,20 @@ public class MainActivity extends Activity {
   spaced(root,stats,16);
  }
  void chooseDate(){Calendar cal=Calendar.getInstance();cal.setTimeInMillis(due);new DatePickerDialog(this,(view,y,m,d)->new TimePickerDialog(this,(tv,h,min)->{Calendar x=Calendar.getInstance();x.set(y,m,d,h,min,0);due=x.getTimeInMillis();dateButton.setText("▣  "+date(due));},cal.get(Calendar.HOUR_OF_DAY),cal.get(Calendar.MINUTE),true).show(),cal.get(Calendar.YEAR),cal.get(Calendar.MONTH),cal.get(Calendar.DAY_OF_MONTH)).show();}
+ void assistantDialog(){
+  LinearLayout layout=new LinearLayout(this);layout.setOrientation(1);layout.setPadding(dp(18),dp(12),dp(18),dp(12));
+  Spinner language=new Spinner(this);language.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Français","English"}));layout.addView(language);
+  EditText command=new EditText(this);command.setMinLines(3);command.setHint("Ex : Incident climatisation en panne, priorité urgente, dans 30 minutes. / Create task check network in 2 hours.");layout.addView(command);
+  new AlertDialog.Builder(this).setTitle("Adaptask Assistant · hors ligne / offline").setView(layout).setNegativeButton("Annuler",null).setPositiveButton("Analyser / Parse",(dialog,which)->{
+   if(command.getText().toString().trim().isEmpty())return;
+   AdaptaskAssistant.Draft draft=AdaptaskAssistant.parse(command.getText().toString(),language.getSelectedItemPosition()==1?"en":"fr");
+   String summary="Type : "+(draft.type==1?"Incident":"Tâche / Task")+"\\nTitre / Title : "+draft.title+"\\nPriorité / Priority : "+levels[draft.priority]+"\\nDate / Due : "+date(draft.due)+"\\nCatégorie / Category : "+draft.category+"\\nRépétition / Repeat : "+repeats[draft.recurrence];
+   new AlertDialog.Builder(this).setTitle("Vérifier la proposition / Review").setMessage(summary).setNegativeButton("Corriger / Edit",null).setPositiveButton("Remplir le formulaire / Fill form",(d,w)->{
+    title.setText(draft.title);category.setText(draft.category);priority.setSelection(draft.priority);taskType.setSelection(draft.type);recurrence.setSelection(draft.recurrence);description.setText(draft.description);due=draft.due;dateButton.setText("▣  "+date(due));reminderOverride=draft.reminderMinutes;
+    Toast.makeText(this,"Vérifie les champs puis ajoute la tâche / Review before saving",Toast.LENGTH_LONG).show();
+   }).show();
+  }).show();
+ }
  void render(){
   LinearLayout shell=new LinearLayout(this);shell.setOrientation(1);shell.setBackgroundColor(Color.rgb(247,251,255));setContentView(shell);
   ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);shell.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
@@ -161,6 +175,7 @@ public class MainActivity extends Activity {
   TextView searchIcon=text("⌕",27,BLUE,true);searchIcon.setPadding(dp(10),0,dp(15),0);header.addView(searchIcon);
   TextView settingsIcon=chip("⚙",false);settingsIcon.setTextColor(BLUE);settingsIcon.setOnClickListener(v->settings());header.addView(settingsIcon);spaced(root,header,13);
   spaceBar(root);dashboard(root);TextView reportButton=chip("▥ Rapports et statistiques",false);spaced(root,reportButton,13);reportButton.setOnClickListener(v->showReports());
+  TextView assistantButton=chip("✦ Assistant FR / EN · saisie rapide hors ligne",true);spaced(root,assistantButton,12);assistantButton.setOnClickListener(v->assistantDialog());
   LinearLayout form=panel();spaced(root,form,16);
   LinearLayout formHead=row();TextView formTitle=text("✚  Nouvelle tâche",19,INK,true);formHead.addView(formTitle,new LinearLayout.LayoutParams(0,dp(44),1));TextView idea=chip("☼",false);idea.setOnClickListener(v->settings());formHead.addView(idea);spaced(form,formHead,8);
   title=new EditText(this);title.setSingleLine(true);title.setTextSize(14);title.setHint("☷  Que devez-vous faire ?");title.setPadding(dp(12),dp(10),dp(12),dp(10));title.setBackground(shape(Color.rgb(245,249,254),13));spaced(form,title,9);
