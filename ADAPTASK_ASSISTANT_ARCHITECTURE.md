@@ -19,5 +19,5 @@ Assistant bilingue français/anglais, spécialisé dans les tâches, incidents, 
 
 ## Statut
 - Réalisé : analyse locale bilingue de commandes textuelles et formulaire de vérification (prototype).
-- À réaliser : reconnaissance vocale réellement embarquée FR/EN, gestion des ambiguïtés, réglages de consentement, adaptateur distant optionnel, tests sur appareil.
+- Prototype intégré : bouton de dictée utilisant SpeechRecognizer.createOnDeviceSpeechRecognizer sur Android 12+ uniquement si un moteur local compatible est présent. Les packs linguistiques FR/EN ne sont pas inclus dans l’APK, et la disponibilité dépend du téléphone. À réaliser : empaquetage éventuel de modèles vocaux, gestion des ambiguïtés, réglages de consentement, adaptateur distant optionnel, tests de compilation et sur appareil.
 - Aucun appel cloud n'est actuellement implémenté. Le système ne doit pas prétendre disposer déjà du fallback.
