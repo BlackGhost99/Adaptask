@@ -275,6 +275,7 @@ public class MainActivity extends Activity {
   TextView settingsIcon=chip("⚙",false);settingsIcon.setTextColor(BLUE);settingsIcon.setOnClickListener(v->settings());header.addView(settingsIcon);spaced(root,header,13);
   spaceBar(root);dashboard(root);TextView reportButton=chip("▥ Rapports et statistiques",false);spaced(root,reportButton,13);reportButton.setOnClickListener(v->showReports());
   TextView assistantButton=chip("✦ Assistant FR / EN · saisie rapide hors ligne",true);spaced(root,assistantButton,12);assistantButton.setOnClickListener(v->assistantDialog());
+  TextView budgetButton=chip("◉ Budget & Dépenses · offline / Budget & Expenses",false);spaced(root,budgetButton,13);budgetButton.setOnClickListener(v->startActivity(new Intent(this,BudgetActivity.class)));
   LinearLayout form=panel();spaced(root,form,16);
   LinearLayout formHead=row();TextView formTitle=text("✚  Nouvelle tâche",19,INK,true);formHead.addView(formTitle,new LinearLayout.LayoutParams(0,dp(44),1));TextView idea=chip("☼",false);idea.setOnClickListener(v->settings());formHead.addView(idea);spaced(form,formHead,8);
   title=new EditText(this);title.setSingleLine(true);title.setTextSize(14);title.setHint("☷  Que devez-vous faire ?");title.setPadding(dp(12),dp(10),dp(12),dp(10));title.setBackground(shape(Color.rgb(245,249,254),13));spaced(form,title,9);
@@ -298,8 +299,8 @@ public class MainActivity extends Activity {
   taskList=new LinearLayout(this);taskList.setOrientation(1);root.addView(taskList);
   search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int a){}public void onTextChanged(CharSequence s,int st,int before,int count){searchQuery=s.toString();populateTasks();}public void afterTextChanged(android.text.Editable e){}});
   populateTasks();
-  LinearLayout nav=row();nav.setBackground(shape(Color.WHITE,12));String[] navs={"⌂\nAccueil","☷\nTâches","▱\nCatégories","⚙\nParamètres"};
-  for(int i=0;i<4;i++){final int index=i;TextView button=text(navs[i],12,i==0?BLUE:INK,i==0);button.setGravity(Gravity.CENTER);nav.addView(button,new LinearLayout.LayoutParams(0,dp(61),1));button.setOnClickListener(v->{if(index==3)settings();else if(index==1)scroll.post(()->scroll.smoothScrollTo(0,taskHeading.getTop()));else if(index==2)manageCategories();else scroll.smoothScrollTo(0,0);});}shell.addView(nav);
+  LinearLayout nav=row();nav.setBackground(shape(Color.WHITE,12));String[] navs={"⌂\nAccueil","☷\nTâches","▱\nCatégories","⚙\nParamètres","◉\nBudget"};
+  for(int i=0;i<4;i++){final int index=i;TextView button=text(navs[i],12,i==0?BLUE:INK,i==0);button.setGravity(Gravity.CENTER);nav.addView(button,new LinearLayout.LayoutParams(0,dp(61),1));button.setOnClickListener(v->{if(index==4)startActivity(new Intent(this,BudgetActivity.class));else if(index==3)settings();else if(index==1)scroll.post(()->scroll.smoothScrollTo(0,taskHeading.getTop()));else if(index==2)manageCategories();else scroll.smoothScrollTo(0,0);});}shell.addView(nav);
  }
  void populateTasks(){
   if(taskList==null)return;taskList.removeAllViews();int count=0;long now=System.currentTimeMillis();String q=searchQuery.trim().toLowerCase(Locale.ROOT);
